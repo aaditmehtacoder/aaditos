@@ -1,0 +1,65 @@
+{
+  "name": "AaditOS",
+  "short_name": "AaditOS",
+  "description": "A private personal operating system for school, projects, opportunities and focus.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F7F7F4",
+  "theme_color": "#4F46E5",
+  "categories": [
+    "productivity",
+    "education"
+  ],
+  "lang": "en-US",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Today",
+      "url": "/",
+      "description": "What is happening today"
+    },
+    {
+      "name": "Tasks",
+      "url": "/tasks",
+      "description": "Every open task"
+    },
+    {
+      "name": "Inbox",
+      "url": "/inbox",
+      "description": "Turn an email into dated tasks and events"
+    },
+    {
+      "name": "Focus",
+      "url": "/focus",
+      "description": "Start a focus session"
+    },
+    {
+      "name": "Compass",
+      "url": "/compass",
+      "description": "Ask the assistant"
+    }
+  ]
+}

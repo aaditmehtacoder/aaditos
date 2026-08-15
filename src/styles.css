@@ -1,0 +1,395 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design system definition.
+ *
+ * The @theme inline block maps CSS custom properties to Tailwind utility
+ * classes (e.g. --color-primary -> bg-primary, text-primary).
+ *
+ * The :root and .dark blocks define the actual color values using oklch.
+ * All colors MUST use oklch format.
+ *
+ * To add a new semantic color:
+ * 1. Add the variable to :root (light value) and .dark (dark value)
+ * 2. Register it in @theme inline as --color-<name>: var(--<name>)
+ */
+
+@theme inline {
+  --font-sans:
+    "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  /*
+   * Display face. Fraunces at weight 300 with tight negative tracking is the
+   * signature both aaditmehta.dev and pick44.com share — serif for the thing
+   * you read first, sans for everything you operate. Applied only to page
+   * titles via `.display`, never to interface chrome, so the dashboard stays
+   * as dense and scannable as it was.
+   */
+  --font-display: "Fraunces", "Iowan Old Style", Georgia, ui-serif, serif;
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-soft: var(--success-soft);
+  --color-success-strong: var(--success-strong);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-strong: var(--warning-strong);
+  --color-urgent: var(--urgent);
+  --color-urgent-soft: var(--urgent-soft);
+  --color-primary-soft: var(--primary-soft);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+:root {
+  --radius: 0.75rem;
+  --background: oklch(0.973 0.005 106);
+  --foreground: oklch(0.194 0.006 120);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.194 0.006 120);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.194 0.006 120);
+  --primary: oklch(0.53 0.208 275);
+  --primary-foreground: oklch(0.99 0.002 106);
+  --primary-soft: oklch(0.953 0.022 275);
+  --secondary: oklch(0.955 0.005 106);
+  --secondary-foreground: oklch(0.194 0.006 120);
+  --muted: oklch(0.955 0.005 106);
+  --muted-foreground: oklch(0.545 0.007 110);
+  --accent: oklch(0.955 0.005 106);
+  --accent-foreground: oklch(0.194 0.006 120);
+  --destructive: oklch(0.58 0.19 25);
+  --destructive-foreground: oklch(0.99 0.002 106);
+  --success: oklch(0.6 0.11 152);
+  --success-foreground: oklch(0.99 0.002 106);
+  --success-soft: oklch(0.955 0.03 152);
+  --success-strong: oklch(0.43 0.1 152);
+  --warning: oklch(0.74 0.14 72);
+  --warning-foreground: oklch(0.22 0.03 72);
+  --warning-soft: oklch(0.962 0.035 82);
+  --warning-strong: oklch(0.45 0.1 62);
+  --urgent: oklch(0.55 0.19 25);
+  --urgent-soft: oklch(0.958 0.028 25);
+  --border: oklch(0.937 0.005 110);
+  --input: oklch(0.918 0.006 110);
+  --ring: oklch(0.53 0.208 275);
+  --chart-1: oklch(0.53 0.208 275);
+  --chart-2: oklch(0.6 0.11 152);
+  --chart-3: oklch(0.74 0.14 72);
+  --chart-4: oklch(0.58 0.19 25);
+  --chart-5: oklch(0.7 0.02 110);
+  --sidebar: oklch(0.963 0.005 106);
+  --sidebar-foreground: oklch(0.194 0.006 120);
+  --sidebar-primary: oklch(0.53 0.208 275);
+  --sidebar-primary-foreground: oklch(0.99 0.002 106);
+  --sidebar-accent: oklch(0.93 0.005 106);
+  --sidebar-accent-foreground: oklch(0.194 0.006 120);
+  --sidebar-border: oklch(0.918 0.007 110);
+  --sidebar-ring: oklch(0.53 0.208 275);
+}
+
+.dark {
+  /*
+   * Cool, not muddy.
+   *
+   * The neutrals were previously biased to hue 120, which is green — on a dark
+   * ground that reads as slightly swampy rather than crisp. They now sit at 265,
+   * between aaditmehta.dev's ink (oklch 0.19 0.009 256) and the indigo accent
+   * (277), with just enough chroma that the grey reads as chosen rather than
+   * accidental. Same family as the light theme, one deliberate step cooler.
+   *
+   * Steps: sidebar 0.148 < background 0.165 < card 0.198 < muted 0.242 <
+   * border 0.278. Each is a visible step at normal brightness, so panels
+   * separate without needing heavy shadows.
+   */
+  --background: oklch(0.165 0.009 265);
+  --foreground: oklch(0.962 0.004 265);
+  --card: oklch(0.198 0.01 265);
+  --card-foreground: oklch(0.962 0.004 265);
+  --popover: oklch(0.21 0.011 265);
+  --popover-foreground: oklch(0.962 0.004 265);
+  --primary: oklch(0.66 0.185 275);
+  --primary-foreground: oklch(0.15 0.009 265);
+  --primary-soft: oklch(0.28 0.062 275);
+  --secondary: oklch(0.242 0.01 265);
+  --secondary-foreground: oklch(0.962 0.004 265);
+  --muted: oklch(0.242 0.01 265);
+  /* Brighter than before (0.68) so secondary text stays legible on 0.165. */
+  --muted-foreground: oklch(0.715 0.013 265);
+  --accent: oklch(0.242 0.01 265);
+  --accent-foreground: oklch(0.962 0.004 265);
+  --destructive: oklch(0.645 0.175 25);
+  --destructive-foreground: oklch(0.98 0.002 265);
+  --success: oklch(0.7 0.115 152);
+  --success-foreground: oklch(0.15 0.009 265);
+  --success-soft: oklch(0.265 0.045 152);
+  --success-strong: oklch(0.83 0.115 152);
+  --warning: oklch(0.8 0.13 72);
+  --warning-foreground: oklch(0.18 0.02 72);
+  --warning-soft: oklch(0.285 0.05 72);
+  --warning-strong: oklch(0.88 0.11 78);
+  --urgent: oklch(0.71 0.175 25);
+  --urgent-soft: oklch(0.275 0.062 25);
+  /* Slightly more present than before (0.262) — hairlines were disappearing. */
+  --border: oklch(0.278 0.011 265);
+  --input: oklch(0.318 0.012 265);
+  --ring: oklch(0.66 0.185 275);
+  --chart-1: oklch(0.66 0.185 275);
+  --chart-2: oklch(0.7 0.115 152);
+  --chart-3: oklch(0.8 0.13 72);
+  --chart-4: oklch(0.66 0.175 25);
+  --chart-5: oklch(0.47 0.015 265);
+  /* Deeper than the page, so the rail reads as behind the content. */
+  --sidebar: oklch(0.148 0.009 265);
+  --sidebar-foreground: oklch(0.962 0.004 265);
+  --sidebar-primary: oklch(0.66 0.185 275);
+  --sidebar-primary-foreground: oklch(0.15 0.009 265);
+  --sidebar-accent: oklch(0.242 0.01 265);
+  --sidebar-accent-foreground: oklch(0.962 0.004 265);
+  --sidebar-border: oklch(0.268 0.011 265);
+  --sidebar-ring: oklch(0.66 0.185 275);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Every interactive element gets a visible focus ring, always. */
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  ::selection {
+    background-color: var(--primary-soft);
+    color: var(--color-foreground);
+  }
+
+  /* Honour the OS setting and the in-app "Reduce motion" preference. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  .reduce-motion *,
+  .reduce-motion *::before,
+  .reduce-motion *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@utility surface {
+  background-color: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+}
+
+@utility hairline {
+  border-color: var(--color-border);
+}
+
+/** Visually hidden but available to assistive technology. */
+@utility sr-only-focusable {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+/*
+ * Motion.
+ *
+ * One small vocabulary, used everywhere. Nothing decorative: each animation
+ * either explains a state change (a task settling as it completes) or gives
+ * weight to something that just arrived. Everything sits in the 150–220ms band
+ * and is disabled wholesale by prefers-reduced-motion or the in-app switch.
+ */
+@theme inline {
+  --ease-out-soft: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-settle: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 150ms;
+  --dur-base: 190ms;
+  --dur-slow: 260ms;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes check-pop {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes settle {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(0.985);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes now-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.82);
+  }
+}
+
+@keyframes sheen {
+  from {
+    background-position: -180% 0;
+  }
+  to {
+    background-position: 180% 0;
+  }
+}
+
+/** Content that has just arrived. Stagger with `style={{ '--i': n }}`. */
+@utility rise {
+  animation: rise-in var(--dur-slow) var(--ease-settle) both;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+
+@utility rise-fast {
+  animation: rise-in var(--dur-base) var(--ease-settle) both;
+  animation-delay: calc(var(--i, 0) * 24ms);
+}
+
+@utility fade {
+  animation: fade-in var(--dur-base) var(--ease-out-soft) both;
+}
+
+/** A row acknowledging that it was just completed. */
+@utility settle-once {
+  animation: settle var(--dur-slow) var(--ease-settle);
+}
+
+/** Skeletons: a slow sheen reads calmer than a blinking pulse. */
+@utility shimmer {
+  background-image: linear-gradient(
+    90deg,
+    var(--color-muted) 0%,
+    color-mix(in oklch, var(--color-muted) 60%, var(--color-card)) 50%,
+    var(--color-muted) 100%
+  );
+  background-size: 180% 100%;
+  animation: sheen 1.6s ease-in-out infinite;
+}
+
+/*
+ * Display type.
+ *
+ * Matches the headline treatment on aaditmehta.dev and pick44.com: Fraunces at
+ * weight 300, optical size tuned for display, and roughly -0.03em tracking.
+ * Both sites set headlines light and tight; at default weight the serif reads
+ * heavy and dated, so the weight is the whole effect.
+ */
+@utility display {
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-variation-settings: "opsz" 48, "SOFT" 0, "WONK" 0;
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+  text-wrap: balance;
+}
