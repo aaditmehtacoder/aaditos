@@ -154,9 +154,35 @@ This subscribes the device to web push. Do it **once per device** — your
 Chromebook and your laptop each need their own toggle, because a push
 subscription belongs to one browser on one machine.
 
-Vercel Cron then pings hourly between 6am and 10pm Pacific. The push itself
-carries **no content**: the app fetches what to say when it arrives, so Google's
-push servers never see your task titles.
+The push itself carries **no content**: the app fetches what to say when it
+arrives, so Google's push servers never see your task titles.
+
+**Two schedulers drive it, for a reason.** Vercel's Hobby plan allows exactly one
+cron run per day, and a once-daily push cannot tell you something is due in an
+hour. So:
+
+- **Vercel cron**, 7am Pacific daily — the floor. Always runs.
+- **GitHub Actions**, hourly 6am–10pm Pacific — the real cadence. Free, no plan
+  change needed.
+
+To turn on the hourly one, add two repository secrets at **GitHub → Settings →
+Secrets and variables → Actions**:
+
+| Secret | Value |
+|---|---|
+| `APP_URL` | `https://<your-app>.vercel.app` (no trailing slash) |
+| `CRON_SECRET` | the same value as in Vercel |
+
+Then **Actions → Push notifications → Run workflow** to test it immediately.
+
+> Two GitHub caveats worth knowing: scheduled runs can be delayed by 5–30 minutes
+> at peak, and GitHub pauses schedules on repos with no activity for 60 days. If
+> that happens, notifications quietly degrade to the daily Vercel cron rather
+> than stopping — push any commit to re-enable.
+>
+> Upgrading Vercel to Pro would let the Vercel cron run hourly on its own and
+> make the Actions workflow unnecessary. That costs money and is entirely your
+> call; nothing here needs it.
 
 **Check:** toggle it on, close the app entirely, and wait for the next hour mark
 with something due. Or force it now:
@@ -229,7 +255,8 @@ connected, confirming an event also adds it to your real Google Calendar.
 
 | Endpoint | When | Does |
 |---|---|---|
-| `/api/cron/sync` | 6am Pacific daily | Refreshes provider caches |
-| `/api/cron/push` | Hourly, 6am–10pm Pacific | Pings subscribed devices |
+| `/api/cron/sync` | 6am Pacific daily (Vercel) | Refreshes provider caches |
+| `/api/cron/push` | 7am Pacific daily (Vercel) | Floor — always runs |
+| `/api/cron/push` | Hourly 6am–10pm Pacific (GitHub Actions) | Real cadence |
 
 Both require `CRON_SECRET` and return 401 without it.

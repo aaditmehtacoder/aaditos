@@ -1,0 +1,74 @@
+# Hourly push notifications.
+#
+# Why this exists rather than a Vercel cron: Vercel's Hobby plan allows exactly
+# one run per day per cron job. A once-daily push cannot tell you something is
+# due in an hour, which is the entire point of the feature. GitHub Actions
+# schedules are free and have no such limit, and the repo already lives here.
+#
+# `vercel.json` still runs the same endpoint once each morning. That is the
+# floor: if this workflow is ever disabled (GitHub pauses schedules on repos
+# with no activity for 60 days), notifications degrade to daily rather than
+# stopping outright.
+#
+# Two secrets are required — Settings → Secrets and variables → Actions:
+#   APP_URL      https://your-app.vercel.app   (no trailing slash)
+#   CRON_SECRET  the same value as in Vercel
+#
+# Without them the job fails loudly instead of silently sending nothing.
+
+name: Push notifications
+
+on:
+  schedule:
+    # Hourly, 6am–10pm Pacific. Cron here is UTC and does not follow DST, so
+    # this is written for PDT (UTC-7) and drifts an hour in winter — harmless
+    # for a reminder, and better than notifying at 4am.
+    - cron: "7 13-23,0-5 * * *"
+  # Lets you fire one by hand from the Actions tab to test the whole chain.
+  workflow_dispatch:
+
+# A slow run must never overlap the next one; a doubled push means a doubled
+# notification on every subscribed device.
+concurrency:
+  group: push-notifications
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger push
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${APP_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::APP_URL and CRON_SECRET must both be set as repository secrets."
+            exit 1
+          fi
+
+          # The secret goes in the Authorization header, never the URL: a query
+          # string lands in logs and in any proxy in between.
+          status=$(curl -sS -o response.json -w '%{http_code}' \
+            --max-time 60 --retry 2 --retry-delay 5 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${APP_URL}/api/cron/push")
+
+          echo "HTTP ${status}"
+          # The response carries no endpoints or personal data, only counts.
+          cat response.json
+          echo
+
+          if [ "$status" != "200" ]; then
+            echo "::error::Push trigger failed with HTTP ${status}"
+            exit 1
+          fi
+
+          # A 200 that sent nothing is worth surfacing: it usually means no
+          # device has subscribed yet, which looks identical to working.
+          if grep -q '"sent":0' response.json; then
+            echo "::warning::No pushes were sent — check that a device is subscribed."
+          fi

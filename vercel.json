@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/cron/push",
-      "schedule": "7 14-23,0-5 * * *"
+      "schedule": "7 14 * * *"
     }
   ],
   "headers": [
