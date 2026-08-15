@@ -149,10 +149,17 @@ function SignInPage() {
               <fieldset disabled={passcodeBusy} className="space-y-2.5">
                 <legend className="sr-only">Sign in with a passcode</legend>
 
+                {/* With a single account there is nothing to choose, so the
+                    picker would be a control with one option — noise before the
+                    only field that matters. It returns automatically if a
+                    second account is ever added. */}
                 <div
                   role="radiogroup"
                   aria-label="Account"
-                  className="flex gap-1 rounded-[10px] bg-secondary p-1"
+                  hidden={accounts.length < 2}
+                  className={
+                    accounts.length < 2 ? "hidden" : "flex gap-1 rounded-[10px] bg-secondary p-1"
+                  }
                 >
                   {accounts.map((option) => {
                     const selected = option.id === account;

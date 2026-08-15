@@ -171,6 +171,7 @@ export const Route = createFileRoute("/api/inbox")({
 
         return json({
           ok: true,
+          remainingToday: limit.remaining,
           items,
           ...(result.note ? { note: result.note } : {}),
           source: { subject: source.subject, from: source.from, receivedAt: source.receivedAt },

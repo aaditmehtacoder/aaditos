@@ -93,7 +93,11 @@ export const Route = createFileRoute("/api/compass/task")({
             502,
           );
         }
-        return json({ ok: true, draft: draft.data });
+        // Tell the client how much of today's budget is left. A limit you can
+        // see coming is a different experience from one you hit face-first.
+        return json({ ok: true, draft: draft.data, remainingToday: limit.remaining }, 200, {
+          "x-ratelimit-remaining": String(limit.remaining),
+        });
       },
     },
   },

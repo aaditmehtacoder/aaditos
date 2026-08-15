@@ -22,11 +22,19 @@
 
 import { serverEnv } from "./env";
 
-/** The accounts reachable by passcode, in the order the sign-in page lists them. */
+/**
+ * The accounts reachable by passcode.
+ *
+ * One, deliberately. Three accounts meant a picker on the sign-in screen and a
+ * decision to make before typing anything — and it split the same person's work
+ * across three separate workspaces, so a task added on one was invisible on the
+ * others. One main account keeps everything in one place.
+ *
+ * Adding an entry here brings the picker back automatically; the sign-in page
+ * renders it only when there is more than one.
+ */
 export const PASSCODE_ACCOUNTS = [
-  { id: "coder", email: "aaditmehtacoder@gmail.com", label: "aaditmehtacoder" },
-  { id: "personal", email: "aaditmehta1@gmail.com", label: "aaditmehta1" },
-  { id: "school", email: "s182194@scusd.net", label: "s182194 (school)" },
+  { id: "main", email: "aaditmehtacoder@gmail.com", label: "aaditmehtacoder" },
 ] as const;
 
 export type PasscodeAccountId = (typeof PASSCODE_ACCOUNTS)[number]["id"];

@@ -424,7 +424,10 @@ export async function extractItemsFromEmail(
       model: serverEnv.openaiModel,
       store: false,
       safety_identifier: safetyIdentifier,
-      max_output_tokens: 2000,
+      // Extraction returns several items so it needs more room than a single
+      // draft, but it still respects the configured ceiling rather than
+      // opting out of the spending guard.
+      max_output_tokens: Math.min(2000, serverEnv.openaiMaxOutputTokens * 2),
       instructions: [
         "Extract every dated commitment from this email for a 14-year-old student's planner.",
         "",

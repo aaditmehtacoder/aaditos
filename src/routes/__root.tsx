@@ -12,6 +12,7 @@ import { useEffect, type ReactNode } from "react";
 
 import { AppShell } from "@/components/os/app-shell";
 import { AuthGate } from "@/components/os/auth-gate";
+import { AutoSync } from "@/components/os/auto-sync";
 import { Notifier } from "@/components/os/notifier";
 import { ServiceWorkerRegistrar } from "@/components/os/service-worker";
 import { Toaster } from "@/components/ui/sonner";
@@ -186,6 +187,7 @@ function RootComponent() {
                 <Outlet />
               </AppShell>
               <Notifier />
+              <AutoSync />
             </OSProvider>
           </AuthGate>
         )}

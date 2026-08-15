@@ -47,67 +47,134 @@ import { relativeTimeLabel } from "@/lib/core/time";
 import { useOS, useUnreadNotifications } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
+/**
+ * Four screens, not eleven.
+ *
+ * Everything still exists and every old URL still resolves — Projects,
+ * Opportunities and Inbox simply live *inside* their parent screen now, reached
+ * by the sub-tabs in `SUB_NAV`. Eleven top-level destinations meant scanning a
+ * list to find anything; four means you already know where to look.
+ *
+ * Focus, Notifications, Integrations and Settings moved to the profile menu:
+ * they are places you go occasionally and on purpose, not part of the daily loop.
+ */
 const NAV = [
   { to: "/", label: "Today", icon: Layers, mobile: true },
   { to: "/school", label: "School", icon: CalendarDays, mobile: true },
-  { to: "/tasks", label: "Tasks", icon: CheckSquare, mobile: true },
-  { to: "/inbox", label: "Inbox", icon: Inbox, mobile: false },
-  { to: "/projects", label: "Projects", icon: FolderGit2, mobile: false },
-  { to: "/opportunities", label: "Opportunities", icon: Target, mobile: false },
-  { to: "/focus", label: "Focus", icon: Timer, mobile: true },
+  { to: "/tasks", label: "Work", icon: CheckSquare, mobile: true },
   { to: "/compass", label: "Compass", icon: Sparkles, mobile: true },
-  { to: "/notifications", label: "Notifications", icon: Bell, mobile: false },
-  { to: "/integrations", label: "Integrations", icon: Plug, mobile: false },
-  { to: "/settings", label: "Settings", icon: Settings, mobile: false },
 ] as const;
 
-const TITLES: Record<string, string> = Object.fromEntries(NAV.map((n) => [n.to, n.label]));
+/**
+ * The routes grouped under each screen. The first entry is the screen itself,
+ * so a sub-tab bar only appears where there is genuinely more than one place to
+ * be — Today and School render none.
+ */
+const SUB_NAV: Record<string, ReadonlyArray<{ to: string; label: string }>> = {
+  "/tasks": [
+    { to: "/tasks", label: "Tasks" },
+    { to: "/projects", label: "Projects" },
+    { to: "/opportunities", label: "Opportunities" },
+  ],
+  "/compass": [
+    { to: "/compass", label: "Ask" },
+    { to: "/inbox", label: "Inbox" },
+  ],
+};
+
+/** Which top-level screen a path belongs to, for highlighting the sidebar. */
+function screenFor(pathname: string): string {
+  for (const [screen, items] of Object.entries(SUB_NAV)) {
+    if (items.some((i) => i.to === pathname || pathname.startsWith(`${i.to}/`))) return screen;
+  }
+  return pathname;
+}
+
+const TITLES: Record<string, string> = {
+  ...Object.fromEntries(NAV.map((n) => [n.to, n.label])),
+  // Reached from the profile menu or a sub-tab; each still needs a header title.
+  "/projects": "Projects",
+  "/opportunities": "Opportunities",
+  "/inbox": "Inbox",
+  "/focus": "Focus",
+  "/notifications": "Notifications",
+  "/integrations": "Integrations",
+  "/settings": "Settings",
+};
 
 const SIDEBAR_KEY = "aaditos:sidebar-collapsed";
 
 function NavList({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
-  const unread = useUnreadNotifications().length;
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  // A sub-route like /projects has to light up its parent screen, which
+  // `activeProps` cannot express — it only ever matches the link's own path.
+  const active = screenFor(pathname);
 
   return (
     <nav aria-label="Primary" className="flex flex-col gap-0.5 px-2">
-      {NAV.map((item) => (
-        <Link
-          key={item.to}
-          to={item.to}
-          onClick={onNavigate}
-          title={collapsed ? item.label : undefined}
-          activeOptions={{ exact: item.to === "/" }}
-          className={cn(
-            "group flex items-center gap-2.5 rounded-[9px] px-2.5 py-[7px] text-[13px] text-muted-foreground transition-colors duration-150 hover:bg-sidebar-accent hover:text-foreground",
-            collapsed && "justify-center px-0",
-          )}
-          activeProps={{
-            className: "bg-sidebar-accent text-foreground font-medium",
-            "aria-current": "page",
-          }}
-        >
-          <item.icon className="size-[15px] shrink-0" strokeWidth={1.8} aria-hidden />
-          {/*
-            Collapsed, the label still has to exist for anything that is not a
-            hovering mouse: `title` alone never appears on a touchscreen and is
-            not a reliable accessible name. Matches how SyncButton does it.
-          */}
-          {collapsed ? (
-            <span className="sr-only">{item.label}</span>
-          ) : (
-            <span className="truncate">{item.label}</span>
-          )}
-          {item.label === "Notifications" && unread > 0 ? (
-            collapsed ? (
-              <span className="sr-only">{unread} unread</span>
+      {NAV.map((item) => {
+        const isActive = active === item.to;
+        return (
+          <Link
+            key={item.to}
+            to={item.to}
+            onClick={onNavigate}
+            title={collapsed ? item.label : undefined}
+            aria-current={isActive ? "page" : undefined}
+            className={cn(
+              "group flex items-center gap-2.5 rounded-[9px] px-2.5 py-[7px] text-[13px] transition-colors duration-150 hover:bg-sidebar-accent hover:text-foreground",
+              collapsed && "justify-center px-0",
+              isActive ? "bg-sidebar-accent font-medium text-foreground" : "text-muted-foreground",
+            )}
+          >
+            <item.icon className="size-[15px] shrink-0" strokeWidth={1.8} aria-hidden />
+            {/*
+              Collapsed, the label still has to exist for anything that is not a
+              hovering mouse: `title` alone never appears on a touchscreen and is
+              not a reliable accessible name. Matches how SyncButton does it.
+            */}
+            {collapsed ? (
+              <span className="sr-only">{item.label}</span>
             ) : (
-              <span className="ml-auto rounded-md bg-urgent-soft px-1.5 text-[10.5px] font-medium tabular-nums text-urgent">
-                {unread}
-              </span>
-            )
-          ) : null}
-        </Link>
-      ))}
+              <span className="truncate">{item.label}</span>
+            )}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+/**
+ * Sub-tabs for a screen that contains more than one page. Rendered directly
+ * under the header so the grouped pages read as one destination rather than
+ * three separate ones hidden in a sidebar.
+ */
+function SubNav() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const items = SUB_NAV[screenFor(pathname)];
+  if (!items) return null;
+
+  return (
+    <nav aria-label="Section" className="flex gap-1 border-b border-border px-4 pb-2 pt-1 lg:px-6">
+      {items.map((item) => {
+        const isActive = pathname === item.to || pathname.startsWith(`${item.to}/`);
+        return (
+          <Link
+            key={item.to}
+            to={item.to}
+            aria-current={isActive ? "page" : undefined}
+            className={cn(
+              "rounded-[8px] px-2.5 py-1.5 text-[12.5px] transition-colors duration-150",
+              isActive
+                ? "bg-secondary font-medium text-foreground"
+                : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
+            )}
+          >
+            {item.label}
+          </Link>
+        );
+      })}
     </nav>
   );
 }
@@ -235,6 +302,7 @@ function ThemeMenuItems() {
 function ProfileMenu() {
   const { profile, isDemo } = useOS();
   const { signOut } = useAuth();
+  const unreadCount = useUnreadNotifications().length;
 
   return (
     <DropdownMenu>
@@ -256,6 +324,24 @@ function ProfileMenu() {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <ThemeMenuItems />
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild className="text-[12.5px]">
+          <Link to="/focus">
+            <Timer className="size-[14px]" />
+            Focus
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild className="text-[12.5px]">
+          <Link to="/notifications">
+            <Bell className="size-[14px]" />
+            Notifications
+            {unreadCount > 0 ? (
+              <span className="ml-auto rounded-md bg-urgent-soft px-1.5 text-[10.5px] font-medium tabular-nums text-urgent">
+                {unreadCount}
+              </span>
+            ) : null}
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild className="text-[12.5px]">
           <Link to="/settings">
@@ -496,6 +582,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar title={title} />
+        <SubNav />
         <OfflineBanner />
         {/*
           The bottom padding clears the floating Compass button, which would

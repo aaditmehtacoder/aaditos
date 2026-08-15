@@ -28,15 +28,30 @@ export const serverEnv = {
     // correctness, so it is the safe default if OPENAI_MODEL is ever unset.
     return read("OPENAI_MODEL") ?? "gpt-5.6-luna";
   },
+  /**
+   * Per-response ceiling. Hard-capped at 4000 regardless of the environment:
+   * a typo adding a zero should cost a truncated answer, not a large bill.
+   */
   get openaiMaxOutputTokens(): number {
     const raw = read("OPENAI_MAX_OUTPUT_TOKENS");
     const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1800;
+    const value = Number.isFinite(parsed) && parsed > 0 ? parsed : 1500;
+    return Math.min(value, 4000);
   },
+  /**
+   * The real spending guard: total AI requests per caller per UTC day, shared
+   * across Compass, quick-add and email extraction.
+   *
+   * 120 is deliberately generous for one student and still bounded — nothing in
+   * the app calls the model on a timer, so reaching this at all means either a
+   * genuinely heavy day or a bug, and both are worth stopping. Hard-capped at
+   * 1000 so a misconfigured value cannot remove the guard entirely.
+   */
   get openaiDailyRequestCap(): number {
     const raw = read("OPENAI_DAILY_REQUEST_CAP");
     const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 300;
+    const value = Number.isFinite(parsed) && parsed > 0 ? parsed : 120;
+    return Math.min(value, 1000);
   },
   get safetyIdentifierSalt(): string {
     return read("SAFETY_IDENTIFIER_SALT") ?? "aaditos-local-salt";
