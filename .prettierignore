@@ -6,3 +6,8 @@ pnpm-lock.yaml
 package-lock.json
 bun.lock
 routeTree.gen.ts
+.vercel
+.tanstack
+.wrangler
+test-results
+playwright-report
