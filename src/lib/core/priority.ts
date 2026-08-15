@@ -126,6 +126,10 @@ export function scoreTask(task: Task, ctx: RankContext): RankedTask {
         ? `Takes ${formatDuration(task.estimateMin)} of the ${formatDuration(ctx.availableMin)} you have`
         : `Needs ${formatDuration(task.estimateMin)} — more than the ${formatDuration(ctx.availableMin)} you have`,
     );
+  } else {
+    // With no window left there is nothing to compare against, but the size of
+    // the job is still the most useful thing to know about it.
+    reasons.push(`Takes ${formatDuration(task.estimateMin)}`);
   }
 
   if (task.status === "in_progress") {
@@ -149,6 +153,14 @@ export function scoreTask(task: Task, ctx: RankContext): RankedTask {
   if (task.estimateMin <= 10 && task.dueAt && dayDiff(now, task.dueAt) <= 0) {
     score += 7;
     reasons.push("Quick win");
+  }
+
+  // Every branch above is conditional, so a task with no deadline, normal
+  // priority and nothing in progress could reach here with nothing to say — and
+  // "Next move" with a blank explanation is the one thing this card must never
+  // be. Name why it ranked instead of rendering an empty list.
+  if (reasons.length === 0) {
+    reasons.push(task.dueAt ? "Next by priority" : "No deadline — ranked by priority");
   }
 
   return { task, score: Math.round(score * 10) / 10, reasons, fitsAvailableTime };

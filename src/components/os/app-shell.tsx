@@ -63,6 +63,10 @@ const NAV = [
   { to: "/school", label: "School", icon: CalendarDays, mobile: true },
   { to: "/tasks", label: "Work", icon: CheckSquare, mobile: true },
   { to: "/compass", label: "Compass", icon: Sparkles, mobile: true },
+  // Back in the sidebar by request: connection state is something you check
+  // often enough while setting things up that burying it in a menu costs more
+  // than the fifth row does.
+  { to: "/integrations", label: "Integrations", icon: Plug, mobile: false },
 ] as const;
 
 /**
@@ -347,12 +351,6 @@ function ProfileMenu() {
           <Link to="/settings">
             <Settings className="size-[14px]" />
             Settings
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild className="text-[12.5px]">
-          <Link to="/integrations">
-            <Plug className="size-[14px]" />
-            Integrations
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />

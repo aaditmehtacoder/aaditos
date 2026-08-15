@@ -102,7 +102,7 @@ export function normalizeEvent(
   }
 
   return {
-    id: stableEventId(raw),
+    id: stableEventId(raw, opts.userId),
     userId: opts.userId,
     title: raw.title.trim().replace(/\s{2,}/g, " "),
     description: raw.description?.trim() || undefined,
@@ -121,12 +121,20 @@ export function normalizeEvent(
 }
 
 /**
- * Deterministic id derived from (source, calendar, ref | title+start) so that
- * re-running an import updates rows instead of inserting duplicates.
+ * Deterministic id derived from (user, source, calendar, ref | title+start) so
+ * that re-running an import updates rows instead of inserting duplicates.
+ *
+ * The user is part of the key, and has to be. The Wilcox calendars are public
+ * and identical for everyone, so an id built from the event alone is the same
+ * string in every account. `replaceEvents` deletes only the caller's own rows
+ * and then upserts — so the upsert lands on a row belonging to someone else and
+ * Postgres rejects it with "new row violates row-level security policy (USING
+ * expression)". Sync fails wholesale, and the message points at RLS rather than
+ * at the id collision actually causing it.
  */
-export function stableEventId(raw: RawEvent): string {
+export function stableEventId(raw: RawEvent, userId: UUID): string {
   const ref = raw.sourceRef ?? `${titleFingerprint(raw.title)}@${raw.startAt}`;
-  return `${raw.source}:${raw.calendarId}:${ref}`;
+  return `${userId}:${raw.source}:${raw.calendarId}:${ref}`;
 }
 
 export interface DedupeResult {

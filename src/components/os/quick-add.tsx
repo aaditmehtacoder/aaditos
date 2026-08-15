@@ -1,5 +1,5 @@
 import { CalendarClock, Loader2, Sparkles, Timer } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Pill } from "@/components/os/primitives";
@@ -17,6 +17,11 @@ import { parseTaskInput, type TaskDraft } from "@/lib/core/nl-task";
 import { formatDuration, formatTime, relativeDayLabel } from "@/lib/core/time";
 import { useOS } from "@/lib/store";
 import { proposeTaskFromText } from "@/lib/compass/client";
+
+/** Long enough to be a real task rather than a half-typed word. */
+const AUTO_REFINE_MIN_CHARS = 6;
+/** A pause in typing, not a keystroke. */
+const AUTO_REFINE_DELAY_MS = 900;
 
 const EXAMPLES = [
   "Finish Algebra 2 worksheet tomorrow at 6 PM for 30 minutes",
@@ -110,6 +115,41 @@ export function QuickAdd() {
     setCompassDraft(null);
   }, [value]);
 
+  /**
+   * Compass runs on its own once you stop typing — no button press.
+   *
+   * The local parser still renders instantly, so the preview is never empty
+   * while the model is thinking; the Compass draft replaces it when it lands.
+   *
+   * Three guards keep this from burning the daily AI budget, which a call per
+   * keystroke would exhaust in one sentence:
+   *   - it waits for a pause in typing rather than firing on every change,
+   *   - it ignores anything too short to be a real task, and
+   *   - it never asks twice about the same text, so reopening the dialog or
+   *     editing back to a previous value costs nothing.
+   */
+  const requestedFor = useRef<string | null>(null);
+
+  useEffect(() => {
+    const text = value.trim();
+    if (!quickAddOpen) return;
+    if (text.length < AUTO_REFINE_MIN_CHARS) return;
+    if (requestedFor.current === text) return;
+
+    const timer = window.setTimeout(() => {
+      requestedFor.current = text;
+      void runCompass(text);
+    }, AUTO_REFINE_DELAY_MS);
+
+    return () => window.clearTimeout(timer);
+    // `runCompass` is stable for the life of the dialog.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, quickAddOpen]);
+
+  useEffect(() => {
+    if (!quickAddOpen) requestedFor.current = null;
+  }, [quickAddOpen]);
+
   async function save() {
     if (!draft) return;
     setSaving(true);
@@ -136,14 +176,28 @@ export function QuickAdd() {
     }
   }
 
-  async function askCompass() {
-    if (!value.trim()) return;
+  async function runCompass(text: string) {
     setCompassBusy(true);
     setCompassError(null);
-    const result = await proposeTaskFromText(value.trim(), { courses, projects });
+    const result = await proposeTaskFromText(text, { courses, projects });
     setCompassBusy(false);
+    // Ignore a result that arrived after the text moved on, or it would
+    // overwrite the preview with a draft of something already edited away.
+    if (text !== valueRef.current.trim()) return;
     if (result.ok) setCompassDraft(result.draft);
     else setCompassError(result.error);
+  }
+
+  /** Lets the async callback above compare against the latest text. */
+  const valueRef = useRef(value);
+  valueRef.current = value;
+
+  /** Manual retry, for when the automatic pass failed. */
+  async function askCompass() {
+    const text = value.trim();
+    if (!text) return;
+    requestedFor.current = text;
+    await runCompass(text);
   }
 
   return (
@@ -152,7 +206,8 @@ export function QuickAdd() {
         <DialogHeader>
           <DialogTitle className="text-[15px]">Quick add</DialogTitle>
           <DialogDescription className="text-[12.5px]">
-            Write it the way you would say it. Nothing is saved until you confirm.
+            Write it the way you would say it — Compass reads it as you type. Nothing is saved until
+            you confirm.
           </DialogDescription>
         </DialogHeader>
 
@@ -212,7 +267,7 @@ export function QuickAdd() {
               ) : (
                 <Sparkles className="size-3.5" aria-hidden />
               )}
-              Refine with Compass
+              {compassError ? "Try Compass again" : "Refine with Compass"}
             </Button>
             <div className="flex gap-2">
               <Button

@@ -223,3 +223,42 @@ describe("availableFocusMinutes", () => {
     ]);
   });
 });
+
+/**
+ * "Next move" exists to answer *why this one*. A card that names a task and
+ * explains nothing is worse than no card — every reason branch is conditional,
+ * so this pins the floor.
+ */
+describe("the ranking always explains itself", () => {
+  const bare: Task = {
+    id: "t-bare",
+    userId: "user-1",
+    title: "Email Mr. Honer about website appointment",
+    category: "personal",
+    dueAllDay: false,
+    priority: "normal",
+    status: "todo",
+    estimateMin: 60,
+    source: "manual",
+    subtasks: [],
+    position: 0,
+    createdAt: NOW.toISOString(),
+    updatedAt: NOW.toISOString(),
+  } as Task;
+
+  it("gives a reason for a task with no date, normal priority and no time left", () => {
+    const ranked = scoreTask(bare, { now: NOW, availableMin: 0, schoolDay: true });
+    expect(ranked.reasons.length).toBeGreaterThan(0);
+    expect(ranked.reasons.join(" ")).toMatch(/takes|priority|deadline/i);
+  });
+
+  it("still states the size of the job when no window is left", () => {
+    const ranked = scoreTask(bare, { now: NOW, availableMin: 0, schoolDay: true });
+    expect(ranked.reasons.join(" ")).toContain("1h");
+  });
+
+  it("compares against the window when there is one", () => {
+    const ranked = scoreTask(bare, { now: NOW, availableMin: 120, schoolDay: true });
+    expect(ranked.reasons.join(" ")).toMatch(/of the 2h you have/);
+  });
+});

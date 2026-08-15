@@ -83,8 +83,14 @@ describe("normalizeEvent", () => {
   });
 
   it("derives a stable id so re-imports update instead of duplicating", () => {
-    const a = stableEventId(raw({ title: "Picture Day", startAt: at(9), sourceRef: "52124972" }));
-    const b = stableEventId(raw({ title: "Picture Day", startAt: at(9), sourceRef: "52124972" }));
+    const a = stableEventId(
+      raw({ title: "Picture Day", startAt: at(9), sourceRef: "52124972" }),
+      "user-1",
+    );
+    const b = stableEventId(
+      raw({ title: "Picture Day", startAt: at(9), sourceRef: "52124972" }),
+      "user-1",
+    );
     expect(a).toBe(b);
   });
 });
@@ -192,5 +198,30 @@ describe("eventsForDay", () => {
     ];
     const day = eventsForDay(events, at(12, 0));
     expect(day.map((e) => e.title)).toEqual(["Picture Day", "Class"]);
+  });
+});
+
+/**
+ * The Wilcox calendars are public and identical for every account, so an id
+ * built from the event alone collides across users. `replaceEvents` deletes only
+ * the caller's own rows and then upserts, so the upsert lands on another user's
+ * row and Postgres rejects the whole sync with an RLS error that names the
+ * policy rather than the collision. See stableEventId.
+ */
+describe("event ids are scoped to the user", () => {
+  const shared = raw({ title: "Picture Day", startAt: at(9), sourceRef: "52124972" });
+
+  it("gives two users different ids for the same public event", () => {
+    expect(stableEventId(shared, "user-a")).not.toBe(stableEventId(shared, "user-b"));
+  });
+
+  it("stays stable for one user, so re-syncing updates rather than duplicates", () => {
+    expect(stableEventId(shared, "user-a")).toBe(stableEventId(shared, "user-a"));
+  });
+
+  it("scopes the id normalizeEvent assigns, not just the helper", () => {
+    const a = normalizeEvent(shared, { userId: "user-a" });
+    const b = normalizeEvent(shared, { userId: "user-b" });
+    expect(a.id).not.toBe(b.id);
   });
 });
