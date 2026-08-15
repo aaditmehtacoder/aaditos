@@ -159,7 +159,7 @@ export const PROVIDERS: ProviderDescriptor[] = [
       "calendar.events — add an event you confirm (cannot delete or share a calendar)",
     ],
     limitation:
-      "This is the only write in AaditOS, and it only runs when you press Confirm — never from a sync, a scheduled job, or Compass. Needs a Google Cloud OAuth client with the Calendar API enabled and this app's redirect URI registered. The refresh token is kept in a sealed, httpOnly cookie encrypted with TOKEN_ENCRYPTION_KEY. School-managed Workspace accounts often block third-party OAuth; if yours does, consent fails and the rest of AaditOS keeps working.",
+      "This is the only write in AaditOS, and it only runs when you press Confirm — never from a sync, a scheduled job, or Compass. Needs a Google Cloud OAuth client with the Calendar API enabled and this app's redirect URI registered. The refresh token is kept in a sealed, httpOnly cookie encrypted with TOKEN_ENCRYPTION_KEY. Three things outside this app can block consent, and each fails differently: a school-managed Workspace account may forbid third-party OAuth entirely; a supervised Family Link account diverts to a parent who must approve; and while the OAuth app is in Testing, only accounts on its test-user list are allowed at all. In every case the rest of AaditOS keeps working, and the Inbox page still turns a pasted email into tasks and events with no Google connection.",
     docsUrl: "https://console.cloud.google.com/apis/credentials",
     capabilityKey: "google",
   },

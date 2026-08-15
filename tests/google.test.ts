@@ -16,6 +16,7 @@ import {
   normalizeClassroomCourses,
   normalizeClassroomWork,
   normalizeGoogleEvents,
+  schoolYearStart,
 } from "@/server/providers/google";
 
 const USER = "user-1";
@@ -358,5 +359,91 @@ describe("row ids are scoped to the user", () => {
     const a = normalizeClassroomCourses(course, "user-a", NOW)[0];
     const b = normalizeClassroomCourses(course, "user-b", NOW)[0];
     expect(a?.sourceRef).toBe(b?.sourceRef);
+  });
+});
+
+/**
+ * A Classroom course stays ACTIVE until someone archives it, and most people
+ * never do. Filtering on courseState alone left a 2023-24 Calculus course in
+ * this year's schedule, alongside seven real classes — the School page showed
+ * fourteen courses for an eight-period day.
+ */
+describe("stale Classroom courses", () => {
+  const NOW_AUG_2026 = "2026-08-15T12:00:00.000Z";
+
+  it("keeps a course created this school year", () => {
+    const courses = normalizeClassroomCourses(
+      [{ id: "1", name: "Biology", courseState: "ACTIVE", creationTime: "2026-08-11T00:00:00Z" }],
+      USER,
+      NOW_AUG_2026,
+    );
+    expect(courses.map((c) => c.name)).toEqual(["Biology"]);
+  });
+
+  it("drops one left active from a previous year", () => {
+    const courses = normalizeClassroomCourses(
+      [
+        { id: "1", name: "Biology", courseState: "ACTIVE", creationTime: "2026-08-11T00:00:00Z" },
+        {
+          id: "2",
+          name: "Calculus 23-24 GC",
+          courseState: "ACTIVE",
+          creationTime: "2023-09-05T00:00:00Z",
+        },
+      ],
+      USER,
+      NOW_AUG_2026,
+    );
+    expect(courses.map((c) => c.name)).toEqual(["Biology"]);
+  });
+
+  /** A missing field should never silently hide a real class. */
+  it("keeps a course with no creation time rather than guessing", () => {
+    const courses = normalizeClassroomCourses(
+      [{ id: "3", name: "Advisory", courseState: "ACTIVE" }],
+      USER,
+      NOW_AUG_2026,
+    );
+    expect(courses.map((c) => c.name)).toEqual(["Advisory"]);
+  });
+
+  it("treats the year as starting in August, not January", () => {
+    // In May 2027 the current school year still began in August 2026.
+    const courses = normalizeClassroomCourses(
+      [
+        {
+          id: "4",
+          name: "Spring class",
+          courseState: "ACTIVE",
+          creationTime: "2026-09-01T00:00:00Z",
+        },
+      ],
+      USER,
+      "2027-05-20T12:00:00.000Z",
+    );
+    expect(courses.map((c) => c.name)).toEqual(["Spring class"]);
+  });
+
+  it("still drops a course from the year before that", () => {
+    const courses = normalizeClassroomCourses(
+      [{ id: "5", name: "Old class", courseState: "ACTIVE", creationTime: "2025-09-01T00:00:00Z" }],
+      USER,
+      "2027-05-20T12:00:00.000Z",
+    );
+    expect(courses).toEqual([]);
+  });
+});
+
+describe("schoolYearStart", () => {
+  it("uses the current calendar year from August onward", () => {
+    expect(schoolYearStart(new Date("2026-08-15T00:00:00Z")).toISOString()).toBe(
+      "2026-08-01T00:00:00.000Z",
+    );
+  });
+
+  it("reaches back to the previous year before August", () => {
+    expect(schoolYearStart(new Date("2027-03-01T00:00:00Z")).toISOString()).toBe(
+      "2026-08-01T00:00:00.000Z",
+    );
   });
 });

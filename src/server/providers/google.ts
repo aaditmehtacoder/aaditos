@@ -250,6 +250,23 @@ interface ClassroomCourseRow {
   courseState?: string;
   alternateLink?: string;
   descriptionHeading?: string;
+  /** RFC-3339. The only reliable signal of which school year a course is from. */
+  creationTime?: string;
+}
+
+/**
+ * The start of the school year containing `now`, as an instant.
+ *
+ * A Classroom course stays ACTIVE until someone archives it, and most people
+ * never do — so "active" includes classes from years ago. Filtering on
+ * `courseState` alone left a 2023-24 Calculus course sitting in this year's
+ * schedule. August is the boundary: anything created before this school year
+ * started belongs to a previous one.
+ */
+export function schoolYearStart(now: Date): Date {
+  const year = now.getUTCFullYear();
+  // Before August, the current school year began in the previous calendar year.
+  return new Date(Date.UTC(now.getUTCMonth() >= 7 ? year : year - 1, 7, 1));
 }
 
 const PALETTE = [
@@ -267,6 +284,7 @@ export function normalizeClassroomCourses(
 ): Course[] {
   if (!Array.isArray(rows)) return [];
   const out: Course[] = [];
+  const cutoff = schoolYearStart(new Date(now));
 
   rows.forEach((entry, index) => {
     if (!entry || typeof entry !== "object") return;
@@ -275,6 +293,14 @@ export function normalizeClassroomCourses(
     if (!name || !row.id) return;
     // ARCHIVED and PROVISIONED courses are not this term's classes.
     if (row.courseState && row.courseState !== "ACTIVE") return;
+
+    // Nor is a course someone simply never archived. Keep anything with no
+    // creation time rather than guessing it away — a missing field should not
+    // silently hide a real class.
+    if (row.creationTime) {
+      const created = new Date(row.creationTime);
+      if (!Number.isNaN(created.getTime()) && created < cutoff) return;
+    }
 
     out.push({
       id: stableId(`${userId}:google:course:${row.id}`),

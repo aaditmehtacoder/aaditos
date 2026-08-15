@@ -173,9 +173,14 @@ function IntegrationsPage() {
               // still works; the newer capabilities return 403 until reconnect.
               status = "error";
               label = "Reconnect needed";
+              // "Press Connect again" is only true when consent can actually be
+              // re-granted. A Family Link account diverts to a parent, and an
+              // account missing from the OAuth test-user list is refused
+              // outright — in both cases clicking achieves nothing, and saying
+              // otherwise sends the user in a loop.
               detail = `Connected as ${google.data.email ?? "your Google account"}, but this consent is missing ${listPhrase(
                 google.data.missingScopes.map(shortScope),
-              )}. Press Connect again to grant it.`;
+              )}. Press Reconnect to grant it — if Google shows "Choose a parent" the account is supervised and a parent has to approve, and if it says access is blocked the account needs adding as a test user in Google Cloud Console.`;
             } else if (google.data.connected) {
               status = "connected";
               label = "Connected";
