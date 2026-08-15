@@ -64,7 +64,9 @@ function CompassPage() {
   return (
     // dvh: this is the one page that is a composer, so it is the one page the
     // Chromebook's on-screen keyboard is guaranteed to shrink.
-    <div className="mx-auto flex h-[calc(100dvh-136px)] max-w-[900px] flex-col lg:h-[calc(100dvh-104px)]">
+    // Measured, not guessed: top bar 53 + main's 20/20 padding = 93, plus the
+    // 52px bottom nav below lg.
+    <div className="mx-auto flex h-[calc(100dvh-145px)] max-w-[900px] flex-col lg:h-[calc(100dvh-93px)]">
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4 pb-4">
         <div className="min-w-0">
           <h1 className="display text-[23px]">Compass</h1>

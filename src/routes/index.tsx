@@ -4,7 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { DayPlanner } from "@/components/os/day-planner";
-import { useModifierKey } from "@/components/os/kbd";
+import { chord, useModifierKey } from "@/components/os/kbd";
 import {
   ChartSummary,
   EmptyState,
@@ -155,7 +155,7 @@ function MustDoToday() {
         action={
           <Link
             to="/tasks"
-            className="-mr-1.5 inline-flex min-h-8 items-center gap-1 rounded-md px-1.5 text-[12px] text-muted-foreground transition-colors duration-[var(--dur-fast)] hover:text-foreground"
+            className="-mr-1.5 inline-flex min-h-7 items-center gap-1 rounded-md px-1.5 text-[12px] text-muted-foreground transition-colors duration-[var(--dur-fast)] hover:text-foreground"
           >
             All tasks <ArrowRight className="size-3" aria-hidden />
           </Link>
@@ -167,7 +167,7 @@ function MustDoToday() {
           title="Nothing is due today"
           description={
             workspace.tasks.length === 0
-              ? `Add your first task with Quick add — or press ${modifier === "⌘" ? "⌘J" : "Ctrl+J"}.`
+              ? `Add your first task with Quick add — or press ${chord(modifier, "J")}.`
               : "Everything due today is done. Look at This week for what is coming."
           }
         />

@@ -13,7 +13,7 @@ import {
   Segmented,
   SourceTag,
 } from "@/components/os/primitives";
-import { useModifierKey } from "@/components/os/kbd";
+import { chord, useModifierKey } from "@/components/os/kbd";
 import { TaskRow } from "@/components/os/task-row";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -166,7 +166,10 @@ function TaskDetail({ task, onClose }: { task: Task | null; onClose: () => void 
               <p className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground">
                 Subtasks
               </p>
-              <ul className="space-y-1.5">
+              {/* space-y-2, not 1.5: the checkbox hit area is 24px, and at the
+                  tighter leading two adjacent targets sit flush against each
+                  other. */}
+              <ul className="space-y-2">
                 {task.subtasks.map((subtask) => (
                   <li key={subtask.id} className="flex items-start gap-2">
                     <Checkbox
@@ -529,7 +532,7 @@ function TasksPage() {
                 ? "Try clearing a filter or searching for something else."
                 : view === "completed"
                   ? "Completed tasks will collect here."
-                  : `Add a task with Quick add, or press ${modifier === "⌘" ? "⌘J" : "Ctrl+J"} from anywhere.`
+                  : `Add a task with Quick add, or press ${chord(modifier, "J")} from anywhere.`
             }
             action={
               activeFilters === 0 ? (
