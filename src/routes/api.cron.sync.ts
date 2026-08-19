@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { newId } from "@/lib/core/ids";
+import { reownEvents } from "@/lib/core/normalize";
 import { serverEnv } from "@/server/env";
 import {
   adminConfig,
@@ -70,9 +71,10 @@ async function handle(request: Request): Promise<Response> {
       const userIds = await listActiveUserIds(config);
       const finishedAt = new Date().toISOString();
       for (const userId of userIds) {
-        // The rows carry the cron's placeholder id from normalization; each
-        // account has to own its own copy.
-        const events = wilcox.events.map((event) => ({ ...event, userId }));
+        // Re-key, not just re-label. These were normalized under the cron's
+        // placeholder user, and `events.id` is a global primary key — writing
+        // the same ids for every account makes each one overwrite the last.
+        const events = reownEvents(wilcox.events, userId);
         const written = await replaceEventsForUser(config, userId, wilcox.calendarIds, events);
         eventsWritten += written;
         usersWritten += 1;

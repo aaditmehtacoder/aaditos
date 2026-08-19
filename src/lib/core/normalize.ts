@@ -125,8 +125,60 @@ export function normalizeEvent(
  * at the id collision actually causing it.
  */
 export function stableEventId(raw: RawEvent, userId: UUID): string {
-  const ref = raw.sourceRef ?? `${titleFingerprint(raw.title)}@${raw.startAt}`;
-  return `${userId}:${raw.source}:${raw.calendarId}:${ref}`;
+  return eventKey({
+    userId,
+    source: raw.source,
+    calendarId: raw.calendarId,
+    sourceRef: raw.sourceRef,
+    title: raw.title,
+    startAt: raw.startAt,
+  });
+}
+
+/**
+ * The id formula itself, usable from either a raw event or a normalized one.
+ *
+ * `startAt` is normalized to an instant before it enters the key, so the same
+ * moment expressed two ways ("2026-08-20T15:30:00-07:00" and the UTC form)
+ * produces one id rather than two.
+ */
+function eventKey(parts: {
+  userId: UUID;
+  source: string;
+  calendarId: string;
+  sourceRef?: string | undefined;
+  title: string;
+  startAt: string;
+}): string {
+  const instant = new Date(parts.startAt);
+  const when = Number.isNaN(instant.getTime()) ? parts.startAt : instant.toISOString();
+  const ref = parts.sourceRef ?? `${titleFingerprint(parts.title)}@${when}`;
+  return `${parts.userId}:${parts.source}:${parts.calendarId}:${ref}`;
+}
+
+/**
+ * Re-key already-normalized events onto a different owner.
+ *
+ * The scheduled sync fetches the public Wilcox calendars once and then writes
+ * the same set into every account, so it needs each account's copy to carry
+ * that account's ids. Swapping `userId` alone is not enough and fails silently
+ * in the worst way: `events.id` is a global primary key, so every account
+ * writes the same rows and each one overwrites the last. Two users, and the
+ * first ends up with whatever the second did not claim.
+ */
+export function reownEvents(events: CalendarEvent[], userId: UUID): CalendarEvent[] {
+  return events.map((event) => ({
+    ...event,
+    userId,
+    id: eventKey({
+      userId,
+      source: event.source,
+      calendarId: event.calendarId,
+      sourceRef: event.sourceRef,
+      title: event.title,
+      startAt: event.startAt,
+    }),
+  }));
 }
 
 export interface DedupeResult {

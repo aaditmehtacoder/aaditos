@@ -8,6 +8,7 @@ import {
   stableEventId,
   titleFingerprint,
   type RawEvent,
+  reownEvents,
 } from "@/lib/core/normalize";
 import { APP_TZ, zonedToUtc } from "@/lib/core/time";
 import type { CalendarEvent, SourceId } from "@/lib/core/types";
@@ -223,5 +224,62 @@ describe("event ids are scoped to the user", () => {
     const a = normalizeEvent(shared, { userId: "user-a" });
     const b = normalizeEvent(shared, { userId: "user-b" });
     expect(a.id).not.toBe(b.id);
+  });
+});
+
+/**
+ * Regression: the scheduled sync wrote the same event ids into every account
+ * because it only swapped `userId` on already-normalized rows. `events.id` is
+ * a global primary key, so each account's write overwrote the previous one and
+ * the first user silently lost most of their calendar.
+ */
+describe("reownEvents", () => {
+  const base = normalizeEvent(
+    {
+      title: "Picture Day",
+      startAt: "2026-08-18T17:30:00.000Z",
+      allDay: false,
+      kind: "school",
+      source: "wilcox",
+      calendarId: "wilcox:school",
+    },
+    { userId: "cron" },
+  );
+
+  it("gives two accounts different ids for the same event", () => {
+    const [a] = reownEvents([base], "user-a");
+    const [b] = reownEvents([base], "user-b");
+    expect(a!.id).not.toBe(b!.id);
+    expect(a!.userId).toBe("user-a");
+    expect(b!.userId).toBe("user-b");
+  });
+
+  it("produces the id that normalizing for that user directly would produce", () => {
+    const direct = normalizeEvent(
+      {
+        title: "Picture Day",
+        startAt: "2026-08-18T17:30:00.000Z",
+        allDay: false,
+        kind: "school",
+        source: "wilcox",
+        calendarId: "wilcox:school",
+      },
+      { userId: "user-a" },
+    );
+    const [reowned] = reownEvents([base], "user-a");
+    expect(reowned!.id).toBe(direct.id);
+  });
+
+  it("is stable, so re-running the scheduled sync updates instead of inserting", () => {
+    const first = reownEvents([base], "user-a");
+    const second = reownEvents([base], "user-a");
+    expect(first[0]!.id).toBe(second[0]!.id);
+  });
+
+  it("keeps everything else about the event intact", () => {
+    const [reowned] = reownEvents([base], "user-a");
+    expect(reowned!.title).toBe(base.title);
+    expect(reowned!.startAt).toBe(base.startAt);
+    expect(reowned!.calendarId).toBe(base.calendarId);
   });
 });
