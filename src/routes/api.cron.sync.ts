@@ -69,6 +69,12 @@ async function handle(request: Request): Promise<Response> {
   if (config && wilcox && wilcox.events.length > 0) {
     try {
       const userIds = await listActiveUserIds(config);
+      // Zero accounts is not success. It is the shape a broken discovery query
+      // takes, and it looked identical to a healthy run for one deploy.
+      if (userIds.length === 0) {
+        writeError = "No accounts found to sync into.";
+        console.error("[cron] nothing to write to", { message: writeError });
+      }
       const finishedAt = new Date().toISOString();
       for (const userId of userIds) {
         // Re-key, not just re-label. These were normalized under the cron's

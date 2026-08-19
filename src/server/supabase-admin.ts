@@ -50,16 +50,19 @@ async function rest(
 }
 
 /**
- * Every account with data.
+ * Every account.
  *
- * Read from `user_preferences` rather than `auth.users`: a row exists there
- * only once someone has actually used the app, which is exactly the set worth
- * syncing. A brand-new account with nothing in it costs nothing to skip.
+ * `profiles`, not `user_preferences`. A profile row is created by a trigger the
+ * moment an account is created, so this is genuinely every account. A
+ * preferences row only appears once someone changes a setting — so reading
+ * from there meant a person who had never opened Settings was invisible to the
+ * scheduled sync, and it quietly wrote to nobody at all on a fresh database.
+ * That failure is silent by construction: an empty list is not an error.
  */
 export async function listActiveUserIds(config: AdminConfig): Promise<string[]> {
-  const response = await rest(config, "/user_preferences?select=user_id");
-  const rows = (await response.json()) as Array<{ user_id: string }>;
-  return [...new Set(rows.map((r) => r.user_id).filter(Boolean))];
+  const response = await rest(config, "/profiles?select=id");
+  const rows = (await response.json()) as Array<{ id: string }>;
+  return [...new Set(rows.map((r) => r.id).filter(Boolean))];
 }
 
 /**
