@@ -84,16 +84,9 @@ describe("parseTaskInput", () => {
     expect(parseTaskInput("Submit the form today at 9 AM", ctx).priority).toBe("high");
   });
 
-  it("links a project and marks it as work", () => {
-    const draft = parseTaskInput("Close the Pick44 audit follow-ups thursday", ctx);
-    expect(draft.projectName).toBe("Pick44");
-    expect(draft.category).toBe("work");
-  });
-
-  it("prefers a course over a project when both could match", () => {
+  it("prefers a course when one matches", () => {
     const draft = parseTaskInput("Biology lab writeup", ctx);
     expect(draft.courseName).toBe("Biology");
-    expect(draft.projectName).toBeUndefined();
   });
 
   it("falls back to personal for everyday text", () => {

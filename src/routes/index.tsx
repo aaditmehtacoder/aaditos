@@ -1,38 +1,23 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRight, CheckCircle2, Send, Sparkles } from "lucide-react";
-import { useState } from "react";
-import { toast } from "sonner";
+import { ArrowRight, CalendarClock, CheckCircle2, Lightbulb } from "lucide-react";
 
-import { DayPlanner } from "@/components/os/day-planner";
-import { chord, useModifierKey } from "@/components/os/kbd";
-import {
-  ChartSummary,
-  EmptyState,
-  Panel,
-  PanelHeader,
-  Pill,
-  ProgressBar,
-  RowSkeleton,
-  SectionLabel,
-} from "@/components/os/primitives";
+import { CaptureBar } from "@/components/os/capture-bar";
+import { EmptyState, Panel, PanelHeader, Pill, RowSkeleton } from "@/components/os/primitives";
 import { TaskRow } from "@/components/os/task-row";
+import { WeatherGlyph } from "@/components/os/weather-glyph";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { formatDateCompact, formatDuration, formatTime, relativeDayLabel } from "@/lib/core/time";
+import { formatDuration, formatTime, relativeDayLabel } from "@/lib/core/time";
 import type { Task } from "@/lib/core/types";
 import { useToday } from "@/lib/hooks/use-today";
 import { useWeather } from "@/lib/integrations/use-integrations";
-import { WeatherGlyph } from "@/components/os/weather-glyph";
 import { useOS } from "@/lib/store";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Today · AaditOS" },
-      {
-        name: "description",
-        content: "Your day at a glance: next move, plan, must-do tasks and focus time.",
-      },
+      { name: "description", content: "What is due, what is next, and what happens today." },
     ],
   }),
   component: TodayPage,
@@ -51,411 +36,306 @@ function greeting(now: Date): string {
   return "Good evening";
 }
 
-function NextMoveCard() {
-  const { next, availableMin, nextWindowMin } = useToday();
-  const { toggleTask, workspace } = useOS();
+/**
+ * The one thing to do next.
+ *
+ * Ranked from the real signals — how soon it is due, how long it takes, and
+ * how much uninterrupted time is actually left before the next commitment —
+ * and it shows the reason, so it can be argued with rather than obeyed.
+ */
+function NextUp() {
+  const { next, nextWindowMin } = useToday();
+  const { toggleTask } = useOS();
 
   if (!next) {
     return (
       <Panel className="rise">
-        <PanelHeader title="Next move" />
-        <EmptyState
-          icon={CheckCircle2}
-          title="Nothing left to rank"
-          description="Every task is done or archived. Add something with Quick add, or enjoy the gap."
-        />
+        <div className="flex items-center gap-3 px-4 py-5">
+          <CheckCircle2 className="size-5 shrink-0 text-success" aria-hidden />
+          <div className="min-w-0">
+            <p className="text-[14px] font-medium">Nothing waiting on you</p>
+            <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+              Everything open is either done or has no deadline. Add something below.
+            </p>
+          </div>
+        </div>
       </Panel>
     );
   }
 
-  const task = next.task;
-  const course = workspace.courses.find((c) => c.id === task.courseId);
-  const project = workspace.projects.find((p) => p.id === task.projectId);
-  const context = course?.name ?? project?.name;
-
   return (
-    <Panel className="rise p-5">
-      <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-[11px] font-medium uppercase tracking-wide text-primary">Next move</h2>
-        <Pill tone={next.fitsAvailableTime ? "primary" : "warning"}>
-          {next.fitsAvailableTime
-            ? `Fits your next ${formatDuration(nextWindowMin || availableMin)}`
-            : "Longer than your next window"}
-        </Pill>
-      </div>
+    <Panel className="rise border-primary/25 bg-primary-soft/25">
+      <div className="px-4 py-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-medium uppercase tracking-wide text-primary">
+            Next up
+          </span>
+          {nextWindowMin > 0 ? (
+            <Pill tone={next.fitsAvailableTime ? "success" : "warning"}>
+              {next.fitsAvailableTime
+                ? `Fits your next ${formatDuration(nextWindowMin)}`
+                : `Longer than your next ${formatDuration(nextWindowMin)}`}
+            </Pill>
+          ) : null}
+        </div>
 
-      <h3 className="mt-2.5 text-[17px] font-semibold leading-snug tracking-tight">{task.title}</h3>
+        <h2 className="mt-1.5 text-[17px] font-semibold leading-snug tracking-tight">
+          {next.task.title}
+        </h2>
 
-      <ul className="mt-2.5 space-y-1">
-        {next.reasons.slice(0, 3).map((reason, i) => (
-          <li
-            key={reason}
-            style={{ "--i": i + 1 } as React.CSSProperties}
-            className="rise-fast flex items-start gap-2 text-[12.5px] text-muted-foreground"
+        <ul className="mt-2 space-y-0.5">
+          {next.reasons.slice(0, 2).map((reason) => (
+            <li key={reason} className="text-[12.5px] text-muted-foreground">
+              · {reason}
+            </li>
+          ))}
+        </ul>
+
+        <div className="mt-3.5 flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            className="h-8 text-[12.5px]"
+            onClick={() => void toggleTask(next.task.id)}
           >
-            <span
-              aria-hidden
-              className="mt-[7px] size-1 shrink-0 rounded-full bg-muted-foreground/50"
-            />
-            {reason}
-          </li>
-        ))}
-      </ul>
-
-      <p className="mt-3 text-[12px] text-muted-foreground">
-        {formatDuration(task.estimateMin)}
-        {context ? ` · ${context}` : ""}
-      </p>
-
-      <div className="mt-4 flex flex-wrap gap-2">
-        <Button size="sm" className="h-8 text-[12.5px]" asChild>
-          <Link to="/focus" search={{ taskId: task.id }}>
-            Start focus session
-          </Link>
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-8 text-[12.5px]"
-          onClick={() => {
-            void toggleTask(task.id);
-            toast.success("Marked complete", { description: task.title });
-          }}
-        >
-          Mark complete
-        </Button>
-        <Button size="sm" variant="ghost" className="h-8 gap-1.5 text-[12.5px]" asChild>
-          <Link to="/compass" search={{ q: `Break down "${task.title}" into steps` }}>
-            <Sparkles className="size-[13px]" aria-hidden /> Ask Compass
-          </Link>
-        </Button>
+            Mark done
+          </Button>
+          <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[12.5px]" asChild>
+            <Link to="/ask">
+              Ask about it <ArrowRight className="size-3.5" aria-hidden />
+            </Link>
+          </Button>
+        </div>
       </div>
     </Panel>
   );
 }
 
-function MustDoToday() {
-  const { mustDoToday, overdue } = useToday();
-  const { workspace } = useOS();
-  const modifier = useModifierKey();
+/** Everything due today or overdue, plus anything undated that is open. */
+function DueList() {
+  const { mustDoToday, overdue, ranked } = useToday();
+  const { status } = useOS();
 
-  const groups: Array<{ label: string; key: Task["category"] }> = [
-    { label: "School", key: "school" },
-    { label: "Work", key: "work" },
-    { label: "Personal", key: "personal" },
-  ];
+  if (status === "loading") {
+    return (
+      <Panel>
+        <PanelHeader title="Due today" />
+        <RowSkeleton rows={3} />
+      </Panel>
+    );
+  }
 
-  let row = 0;
+  const dueIds = new Set(mustDoToday.map((t) => t.id));
+  const undated: Task[] = ranked
+    .map((r) => r.task)
+    .filter((t) => !t.dueAt && !dueIds.has(t.id))
+    .slice(0, 6);
 
   return (
-    <Panel className="rise" style={{ "--i": 1 } as React.CSSProperties}>
+    <Panel>
       <PanelHeader
-        title="Must do today"
-        meta={`${mustDoToday.length} open${overdue.length ? ` · ${overdue.length} overdue` : ""}`}
-        action={
-          <Link
-            to="/tasks"
-            className="-mr-1.5 inline-flex min-h-7 items-center gap-1 rounded-md px-1.5 text-[12px] text-muted-foreground transition-colors duration-[var(--dur-fast)] hover:text-foreground"
-          >
-            All tasks <ArrowRight className="size-3" aria-hidden />
-          </Link>
+        title="Due today"
+        meta={
+          mustDoToday.length === 0
+            ? "nothing"
+            : `${mustDoToday.length} open${overdue.length ? ` · ${overdue.length} overdue` : ""}`
         }
       />
       {mustDoToday.length === 0 ? (
         <EmptyState
           icon={CheckCircle2}
           title="Nothing is due today"
-          description={
-            workspace.tasks.length === 0
-              ? `Add your first task with Quick add — or press ${chord(modifier, "J")}.`
-              : "Everything due today is done. Look at This week for what is coming."
-          }
+          description="Anything with a deadline today shows up here on its own."
         />
       ) : (
-        groups.map((group) => {
-          const list = mustDoToday.filter((t) => t.category === group.key);
-          if (list.length === 0) return null;
-          return (
-            <div key={group.key} className="border-b border-border last:border-b-0">
-              <SectionLabel>{group.label}</SectionLabel>
-              <div className="divide-y divide-border">
-                {list.map((task) => {
-                  row += 1;
-                  return <TaskRow key={task.id} task={task} showReorder dense index={row} />;
-                })}
-              </div>
-            </div>
-          );
-        })
+        <div className="divide-y divide-border">
+          {mustDoToday.map((task, i) => (
+            <TaskRow key={task.id} task={task} index={i} />
+          ))}
+        </div>
+      )}
+
+      {undated.length > 0 ? (
+        <>
+          <p className="border-t border-border px-4 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            No deadline
+          </p>
+          <div className="divide-y divide-border">
+            {undated.map((task) => (
+              <TaskRow key={task.id} task={task} />
+            ))}
+          </div>
+        </>
+      ) : null}
+    </Panel>
+  );
+}
+
+/** Today, as a list. A time grid looked impressive and was unreadable on a phone. */
+function Schedule() {
+  const { timeline, now, school } = useToday();
+
+  return (
+    <Panel>
+      <PanelHeader title="Today" meta={school.reason} />
+      {timeline.length === 0 ? (
+        <EmptyState
+          icon={CalendarClock}
+          title="Nothing scheduled"
+          description="Classes, school events and anything you capture with a time land here."
+        />
+      ) : (
+        <ol className="divide-y divide-border">
+          {timeline.map((event) => {
+            const start = new Date(event.startAt);
+            const end = event.endAt ? new Date(event.endAt) : null;
+            const past = (end ?? start).getTime() < now.getTime();
+            const current =
+              start.getTime() <= now.getTime() && end !== null && end.getTime() > now.getTime();
+            return (
+              <li
+                key={event.id}
+                className={cn(
+                  "grid grid-cols-[64px_minmax(0,1fr)] items-baseline gap-3 px-4 py-2.5",
+                  past && !current && "opacity-50",
+                  current && "bg-primary-soft/30",
+                )}
+              >
+                <span className="text-[11.5px] tabular-nums text-muted-foreground">
+                  {event.allDay ? "All day" : formatTime(event.startAt)}
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-[13px]">
+                    {event.title}
+                    {current ? (
+                      <span className="ml-2 text-[11px] font-medium text-primary">now</span>
+                    ) : null}
+                  </p>
+                  {event.location ? (
+                    <p className="truncate text-[11.5px] text-muted-foreground">{event.location}</p>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
       )}
     </Panel>
   );
 }
 
-/** Time, weather, school status and available focus time in one quiet block. */
-function ContextCard() {
-  const { now, school, nextClass, availableMin, nextWindowMin } = useToday();
-  const { profile } = useOS();
-  const weather = useWeather();
-
+/** The next seven days, so nothing arrives as a surprise on Thursday night. */
+function ComingUp() {
+  const { upcoming, now } = useToday();
+  if (upcoming.length === 0) return null;
   return (
-    <Panel className="rise p-4" style={{ "--i": 2 } as React.CSSProperties}>
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
-        <div className="min-w-0">
-          <p className="text-[20px] font-semibold tabular-nums tracking-tight">{formatTime(now)}</p>
-          <p className="mt-0.5 truncate text-[12px] text-muted-foreground">
-            {formatDateCompact(now)}
-          </p>
-          <p className="truncate text-[12px] text-muted-foreground">{profile.city}</p>
-        </div>
-        {/* Temperature first and largest — it is the only number anyone reads
-            at a glance. The condition and the day's range sit under it. */}
-        <div className="text-right">
-          {weather.isLoading ? (
-            <div aria-hidden className="shimmer ml-auto h-4 w-16 rounded-full" />
-          ) : weather.data?.ok ? (
-            <>
-              <p className="flex items-center justify-end gap-1.5 text-[20px] font-semibold tabular-nums tracking-tight">
-                <WeatherGlyph
-                  code={weather.data.code}
-                  isDay={weather.data.isDay}
-                  className="size-[18px] text-muted-foreground"
-                />
-                {weather.data.tempF}°
-              </p>
-              <p className="mt-0.5 truncate text-[12px] text-muted-foreground">
-                {weather.data.condition}
-              </p>
-              <p className="truncate text-[12px] tabular-nums text-muted-foreground">
-                H {weather.data.highF}° · L {weather.data.lowF}°
-              </p>
-            </>
-          ) : (
-            <p className="text-[12px] text-muted-foreground">Weather unavailable</p>
-          )}
-        </div>
-      </div>
-
-      <dl className="mt-3.5 space-y-2 border-t border-border pt-3.5 text-[12.5px]">
-        <div className="flex items-baseline justify-between gap-3">
-          <dt className="text-muted-foreground">School</dt>
-          <dd className="min-w-0 truncate text-right">{school.reason}</dd>
-        </div>
-        <div className="flex items-baseline justify-between gap-3">
-          <dt className="text-muted-foreground">Next class</dt>
-          <dd className="min-w-0 truncate text-right">
-            {nextClass ? `${nextClass.course.name} · ${nextClass.course.room}` : "None today"}
-          </dd>
-        </div>
-        <div className="flex items-baseline justify-between gap-3">
-          <dt className="text-muted-foreground">Focus time</dt>
-          <dd className="text-right tabular-nums">
-            {formatDuration(availableMin)}
-            {nextWindowMin > 0 ? (
-              <span className="text-muted-foreground"> · next {formatDuration(nextWindowMin)}</span>
-            ) : null}
-          </dd>
-        </div>
-      </dl>
+    <Panel>
+      <PanelHeader title="Coming up" meta="next 7 days" />
+      <ul className="divide-y divide-border">
+        {upcoming.slice(0, 6).map((task) => (
+          <li key={task.id} className="flex items-baseline gap-3 px-4 py-2.5">
+            <span className="w-[64px] shrink-0 text-[11.5px] text-muted-foreground">
+              {relativeDayLabel(task.dueAt!, now)}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[13px]">{task.title}</span>
+          </li>
+        ))}
+      </ul>
     </Panel>
   );
 }
 
-function QuickCapture() {
-  const [value, setValue] = useState("");
-  const [busy, setBusy] = useState(false);
-  const { createTask } = useOS();
+/** Recent thoughts and ideas, so they are not out of sight the moment they are written. */
+function RecentNotes() {
+  const { workspace } = useOS();
+  const notes = workspace.notes.slice(0, 3);
+  if (notes.length === 0) return null;
+  const courseName = new Map(workspace.courses.map((c) => [c.id, c.name]));
 
   return (
-    <form
-      className="flex items-center gap-2 rounded-[14px] border border-dashed border-border px-3 py-1.5 transition-colors duration-[var(--dur-base)] focus-within:border-primary/40"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const title = value.trim();
-        if (!title || busy) return;
-        setBusy(true);
-        void createTask({ title, category: "personal", estimateMin: 15, priority: "low" })
-          .then((created) => {
-            if (created) {
-              toast.success("Captured to your task inbox");
-              setValue("");
-            }
-          })
-          .finally(() => setBusy(false));
-      }}
-    >
-      <label htmlFor="quick-capture" className="sr-only">
-        Capture a task
-      </label>
-      <Input
-        id="quick-capture"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder="Capture something…"
-        className="h-8 border-0 bg-transparent px-0 text-[12.5px] shadow-none focus-visible:ring-0"
+    <Panel>
+      <PanelHeader
+        title="On your mind"
+        action={
+          <Link
+            to="/classes"
+            className="text-[12px] text-muted-foreground transition-colors hover:text-foreground"
+          >
+            All classes →
+          </Link>
+        }
       />
-      <Button
-        size="icon"
-        variant="ghost"
-        className="size-7 shrink-0"
-        type="submit"
-        disabled={!value.trim() || busy}
-        aria-label="Capture task"
-      >
-        <Send className="size-3.5" />
-      </Button>
-    </form>
-  );
-}
-
-function RightRail() {
-  const { upcoming, weekly } = useToday();
-
-  const taskPct = weekly.taskGoal > 0 ? (weekly.completedTasks / weekly.taskGoal) * 100 : 0;
-  const focusPct = weekly.focusGoalMin > 0 ? (weekly.focusMin / weekly.focusGoalMin) * 100 : 0;
-
-  return (
-    <div className="flex flex-col gap-4">
-      <ContextCard />
-
-      <Panel className="rise" style={{ "--i": 3 } as React.CSSProperties}>
-        <PanelHeader title="Coming up" meta="Next 7 days" />
-        {upcoming.length === 0 ? (
-          <EmptyState
-            title="Nothing due this week"
-            description="Deadlines from tasks, Classroom and your calendars show up here."
-          />
-        ) : (
-          <ul className="divide-y divide-border">
-            {upcoming.slice(0, 6).map((task, i) => (
-              <li
-                key={task.id}
-                style={{ "--i": i } as React.CSSProperties}
-                className="rise-fast grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-2 px-4 py-2.5"
-              >
-                {/* Two lines, not an ellipsis: this rail is 296px on a 1366px
-                    Chromebook, and most assignment titles lose their subject
-                    to a single-line truncation. */}
-                <span className="line-clamp-2 text-[12.5px] leading-snug">{task.title}</span>
-                <span className="shrink-0 text-[11.5px] text-muted-foreground">
-                  {relativeDayLabel(task.dueAt!)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Panel>
-
-      <Panel className="rise" style={{ "--i": 4 } as React.CSSProperties}>
-        <div className="p-4 pb-3">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            This week
-          </p>
-          <div className="mt-3 space-y-3">
-            <div>
-              <div className="mb-1.5 flex justify-between text-[12px]">
-                <span className="text-muted-foreground">Tasks completed</span>
-                <span className="tabular-nums">
-                  {weekly.completedTasks}/{weekly.taskGoal}
-                </span>
-              </div>
-              <ProgressBar value={taskPct} label="Tasks completed this week" />
+      <ul className="divide-y divide-border">
+        {notes.map((note) => (
+          <li key={note.id} className="flex items-start gap-2.5 px-4 py-2.5">
+            <Lightbulb className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+            <div className="min-w-0">
+              <p className="break-words text-[12.5px]">{note.body}</p>
+              {note.courseId ? (
+                <p className="mt-0.5 text-[11.5px] text-muted-foreground">
+                  {courseName.get(note.courseId)}
+                </p>
+              ) : null}
             </div>
-            <div>
-              <div className="mb-1.5 flex justify-between text-[12px]">
-                <span className="text-muted-foreground">Focus hours</span>
-                <span className="tabular-nums">
-                  {(weekly.focusMin / 60).toFixed(1)}/{(weekly.focusGoalMin / 60).toFixed(0)}
-                </span>
-              </div>
-              <ProgressBar value={focusPct} label="Focus hours this week" tone="success" />
-            </div>
-          </div>
-        </div>
-        <ChartSummary
-          summary={`This week you completed ${weekly.completedTasks} of a ${weekly.taskGoal} task goal and logged ${(weekly.focusMin / 60).toFixed(1)} of ${(weekly.focusGoalMin / 60).toFixed(0)} focus hours.`}
-          rows={[
-            `Tasks completed: ${weekly.completedTasks} of ${weekly.taskGoal} (${Math.round(taskPct)}%)`,
-            `Focus: ${weekly.focusMin} minutes of ${weekly.focusGoalMin} (${Math.round(focusPct)}%)`,
-          ]}
-        />
-      </Panel>
-
-      <QuickCapture />
-    </div>
+          </li>
+        ))}
+      </ul>
+    </Panel>
   );
 }
 
 function TodayPage() {
-  const { status, error, retry, profile, now, workspace, isDemo } = useOS();
-  const { mustDoToday, availableMin, school } = useToday();
+  const { now, school, mustDoToday, availableMin, doneToday } = useToday();
+  const { profile } = useOS();
+  const weather = useWeather();
 
-  if (status === "loading") {
-    return (
-      <div className="mx-auto max-w-[1400px]">
-        <div aria-hidden className="pb-6">
-          <div className="shimmer h-6 w-64 rounded-full" />
-          <div className="shimmer mt-2.5 h-4 w-96 rounded-full" />
-        </div>
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)_296px]">
-          <Panel>
-            <RowSkeleton rows={4} />
-          </Panel>
-          <Panel>
-            <RowSkeleton rows={6} />
-          </Panel>
-          <Panel className="hidden xl:block">
-            <RowSkeleton rows={5} />
-          </Panel>
-        </div>
-        <span className="sr-only" role="status" aria-live="polite">
-          Loading your day
-        </span>
-      </div>
-    );
-  }
-
-  if (status === "error") {
-    return (
-      <Panel className="mx-auto max-w-lg">
-        <PanelHeader title="Could not load your workspace" />
-        <div className="px-4 py-6 text-center">
-          <p className="text-[12.5px] text-muted-foreground">{error}</p>
-          <Button size="sm" className="mt-4 h-8 text-[12.5px]" onClick={retry}>
-            Try again
-          </Button>
-        </div>
-      </Panel>
-    );
-  }
-
-  const firstName = profile.name.split(" ")[0] ?? "there";
-  const openCount = workspace.tasks.filter(
-    (t) => t.status !== "done" && t.status !== "archived",
-  ).length;
+  const summary = [
+    school.reason,
+    mustDoToday.length === 0 ? "nothing due" : `${mustDoToday.length} due today`,
+    doneToday > 0 ? `${doneToday} done` : "",
+    availableMin > 0 ? `${formatDuration(availableMin)} free` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
-    <div className="mx-auto max-w-[1400px]">
-      <header className="fade pb-6">
-        <h1 className="display text-[25px]">
-          {greeting(now)}, {firstName}.
-        </h1>
-        <p className="mt-1.5 max-w-3xl text-[13px] text-muted-foreground">
-          {school.reason}. {mustDoToday.length} due today, {openCount} open in total, and{" "}
-          {formatDuration(availableMin)} of focus time available.
-          {isDemo ? " You are exploring demo data." : ""}
-        </p>
-      </header>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-[22px] font-semibold tracking-tight">
+            {greeting(now)}, {profile.name.split(" ")[0] || "Aadit"}.
+          </h1>
+          <p className="mt-1 text-[13px] text-muted-foreground">{summary}</p>
+        </div>
+        {weather.data?.ok ? (
+          <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
+            <WeatherGlyph
+              code={weather.data.code ?? 0}
+              isDay={weather.data.isDay ?? true}
+              className="size-4"
+            />
+            <span className="tabular-nums">{Math.round(weather.data.tempF ?? 0)}°</span>
+          </div>
+        ) : null}
+      </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)_296px]">
-        <div className="flex flex-col gap-4">
-          <NextMoveCard />
-          <MustDoToday />
+      <CaptureBar />
+      <NextUp />
+      <DueList />
+
+      {/*
+        min-w-0 on both columns, not decoration. A grid item defaults to
+        min-width:auto, so it refuses to shrink below its own min-content — and
+        one long note title then widens the column past the viewport and makes
+        the whole page scroll sideways on a phone.
+      */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="min-w-0">
+          <Schedule />
         </div>
-        <div className="flex min-h-[440px] flex-col xl:h-[calc(100vh-190px)] xl:min-h-0">
-          <DayPlanner />
+        <div className="min-w-0 space-y-4">
+          <ComingUp />
+          <RecentNotes />
         </div>
-        <RightRail />
       </div>
     </div>
   );

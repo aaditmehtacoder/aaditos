@@ -7,14 +7,12 @@
  */
 
 import type {
-  AppNotification,
   Assignment,
   CalendarEvent,
   Course,
-  FocusSession,
   IntegrationRecord,
-  Opportunity,
-  Project,
+  Note,
+  NoteKind,
   SyncRun,
   Task,
   UserPreferences,
@@ -29,7 +27,6 @@ export interface TaskInput {
   description?: string | undefined;
   category: Task["category"];
   courseId?: UUID | undefined;
-  projectId?: string | undefined;
   dueAt?: string | undefined;
   dueAllDay?: boolean | undefined;
   startAt?: string | undefined;
@@ -43,17 +40,10 @@ export interface TaskInput {
   subtasks?: Array<{ title: string; done?: boolean }> | undefined;
 }
 
-export interface OpportunityInput {
-  org: string;
-  title: string;
-  type: Opportunity["type"];
-  stage?: Opportunity["stage"] | undefined;
-  contact?: string | undefined;
-  deadlineAt?: string | undefined;
-  nextAction?: string | undefined;
-  notes?: string | undefined;
-  relatedEmail?: string | undefined;
-  relatedUrl?: string | undefined;
+export interface NoteInput {
+  courseId?: UUID | undefined;
+  kind?: NoteKind | undefined;
+  body: string;
 }
 
 export interface ImportResult {
@@ -70,27 +60,15 @@ export interface Repository {
   createTask(userId: UUID, input: TaskInput): Promise<Task>;
   updateTask(userId: UUID, id: UUID, patch: Partial<Task>): Promise<Task>;
   deleteTask(userId: UUID, id: UUID): Promise<void>;
-  reorderTasks(userId: UUID, orderedIds: UUID[]): Promise<void>;
 
-  saveFocusSession(userId: UUID, session: FocusSession): Promise<FocusSession>;
-
-  createOpportunity(userId: UUID, input: OpportunityInput): Promise<Opportunity>;
-  updateOpportunity(userId: UUID, id: UUID, patch: Partial<Opportunity>): Promise<Opportunity>;
-  deleteOpportunity(userId: UUID, id: UUID): Promise<void>;
-
-  upsertNotifications(userId: UUID, items: AppNotification[]): Promise<ImportResult>;
-  updateNotification(
-    userId: UUID,
-    id: UUID,
-    patch: Partial<AppNotification>,
-  ): Promise<AppNotification>;
-  markAllNotificationsRead(userId: UUID): Promise<void>;
+  createNote(userId: UUID, input: NoteInput): Promise<Note>;
+  updateNote(userId: UUID, id: UUID, patch: Partial<Note>): Promise<Note>;
+  deleteNote(userId: UUID, id: UUID): Promise<void>;
 
   upsertCourses(userId: UUID, items: Course[]): Promise<ImportResult>;
   upsertAssignments(userId: UUID, items: Assignment[]): Promise<ImportResult>;
   /** Replace every event belonging to `calendarIds` with `items` (idempotent import). */
   replaceEvents(userId: UUID, calendarIds: string[], items: CalendarEvent[]): Promise<ImportResult>;
-  upsertProjects(userId: UUID, items: Project[]): Promise<ImportResult>;
 
   upsertIntegration(userId: UUID, record: IntegrationRecord): Promise<IntegrationRecord>;
   recordSyncRun(userId: UUID, run: SyncRun): Promise<void>;
@@ -98,6 +76,5 @@ export interface Repository {
   savePreferences(userId: UUID, prefs: UserPreferences): Promise<UserPreferences>;
 
   exportWorkspace(userId: UUID): Promise<Workspace>;
-  resetToDemoData(userId: UUID): Promise<Workspace>;
   deleteAllData(userId: UUID): Promise<void>;
 }

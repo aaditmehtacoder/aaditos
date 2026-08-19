@@ -26,14 +26,11 @@ import { newId, stableId } from "@/lib/core/ids";
 import { mergeBySourceRef } from "@/lib/core/normalize";
 import { nowISO } from "@/lib/core/time";
 import type {
-  AppNotification,
   Assignment,
   CalendarEvent,
   Course,
-  FocusSession,
   IntegrationRecord,
-  NotificationCategory,
-  Opportunity,
+  Note,
   Profile,
   SyncRun,
   Task,
@@ -43,7 +40,7 @@ import type {
 import { LocalRepository } from "@/lib/repo/local";
 import { emptyWorkspace } from "@/lib/repo/seed";
 import { SupabaseRepository } from "@/lib/repo/supabase";
-import type { OpportunityInput, Repository, TaskInput } from "@/lib/repo/types";
+import type { NoteInput, Repository, TaskInput } from "@/lib/repo/types";
 
 /**
  * Events the user captured or confirmed, kept on their own calendar so a
@@ -93,17 +90,10 @@ interface OSState {
   updateTask: (id: string, patch: Partial<Task>) => Promise<void>;
   toggleTask: (id: string) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
-  moveTask: (id: string, direction: -1 | 1) => Promise<void>;
 
-  saveFocusSession: (session: FocusSession) => Promise<void>;
-
-  createOpportunity: (input: OpportunityInput) => Promise<Opportunity | null>;
-  updateOpportunity: (id: string, patch: Partial<Opportunity>) => Promise<void>;
-  deleteOpportunity: (id: string) => Promise<void>;
-
-  markNotificationRead: (id: string, read: boolean) => Promise<void>;
-  markAllNotificationsRead: () => Promise<void>;
-  toggleMutedCategory: (category: NotificationCategory) => Promise<void>;
+  createNote: (input: NoteInput) => Promise<Note | null>;
+  updateNote: (id: string, patch: Partial<Note>) => Promise<void>;
+  deleteNote: (id: string) => Promise<void>;
 
   savePreferences: (patch: Partial<UserPreferences>) => Promise<void>;
   applyIntegration: (record: IntegrationRecord) => Promise<void>;
@@ -134,17 +124,11 @@ interface OSState {
   applyWorkspacePatch: (patch: Partial<Workspace>) => void;
 
   exportWorkspace: () => Promise<Workspace>;
-  resetDemoData: () => Promise<void>;
   deleteAllData: () => Promise<void>;
 
   theme: Theme;
   resolvedTheme: "light" | "dark";
   setTheme: (theme: Theme) => void;
-
-  paletteOpen: boolean;
-  setPaletteOpen: (open: boolean) => void;
-  quickAddOpen: boolean;
-  setQuickAddOpen: (open: boolean) => void;
 
   connection: ConnectionState;
   pendingWrites: number;
@@ -170,8 +154,6 @@ export function OSProvider({ children }: { children: ReactNode }) {
   const [now, setNow] = useState(() => new Date());
   const [theme, setThemeState] = useState<Theme>("system");
   const [systemDark, setSystemDark] = useState(false);
-  const [paletteOpen, setPaletteOpen] = useState(false);
-  const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [connection, setConnection] = useState<ConnectionState>("online");
   const [syncing, setSyncing] = useState(false);
   const [pendingWrites, setPendingWrites] = useState(0);
@@ -300,23 +282,6 @@ export function OSProvider({ children }: { children: ReactNode }) {
     };
   }, [flushOutbox]);
 
-  // ---- command palette shortcut ----------------------------------------
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const key = e.key.toLowerCase();
-      if ((e.metaKey || e.ctrlKey) && key === "k") {
-        e.preventDefault();
-        setPaletteOpen((v) => !v);
-      }
-      if ((e.metaKey || e.ctrlKey) && key === "j") {
-        e.preventDefault();
-        setQuickAddOpen((v) => !v);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
   /**
    * Apply `optimistic` immediately, then persist. On failure roll back — unless
    * we are offline and the operation is queueable, in which case keep the
@@ -412,62 +377,16 @@ export function OSProvider({ children }: { children: ReactNode }) {
     [mutate],
   );
 
-  const moveTask = useCallback<OSState["moveTask"]>(
-    async (id, direction) => {
-      const ordered = [...workspace.tasks].sort((a, b) => a.position - b.position);
-      const index = ordered.findIndex((t) => t.id === id);
-      const target = index + direction;
-      if (index < 0 || target < 0 || target >= ordered.length) return;
-      const swapped = [...ordered];
-      const a = swapped[index]!;
-      const b = swapped[target]!;
-      swapped[index] = b;
-      swapped[target] = a;
-      const orderedIds = swapped.map((t) => t.id);
-      await mutate({
-        label: "Reorder tasks",
-        optimistic: (ws) => ({
-          ...ws,
-          tasks: ws.tasks.map((t) => {
-            const position = orderedIds.indexOf(t.id);
-            return position >= 0 ? { ...t, position } : t;
-          }),
-        }),
-        persist: (repo, uid) => repo.reorderTasks(uid, orderedIds),
-      });
-    },
-    [workspace.tasks, mutate],
-  );
-
-  const saveFocusSession = useCallback<OSState["saveFocusSession"]>(
-    async (fsession) => {
-      await mutate({
-        label: "Save focus session",
-        optimistic: (ws) => {
-          const exists = ws.focusSessions.some((s) => s.id === fsession.id);
-          return {
-            ...ws,
-            focusSessions: exists
-              ? ws.focusSessions.map((s) => (s.id === fsession.id ? fsession : s))
-              : [fsession, ...ws.focusSessions],
-          };
-        },
-        persist: (repo, uid) => repo.saveFocusSession(uid, fsession),
-      });
-    },
-    [mutate],
-  );
-
-  const createOpportunity = useCallback<OSState["createOpportunity"]>(
+  const createNote = useCallback<OSState["createNote"]>(
     async (input) => {
       const repo = repoRef.current;
-      if (!repo) return null;
+      if (!repo || !input.body.trim()) return null;
       try {
-        const created = await repo.createOpportunity(userId, input);
-        setWorkspace((ws) => ({ ...ws, opportunities: [created, ...ws.opportunities] }));
+        const created = await repo.createNote(userId, input);
+        setWorkspace((ws) => ({ ...ws, notes: [created, ...ws.notes] }));
         return created;
       } catch (err) {
-        toast.error("Could not save opportunity", {
+        toast.error("Could not save that", {
           description: err instanceof Error ? err.message : "Please try again.",
         });
         return null;
@@ -476,60 +395,30 @@ export function OSProvider({ children }: { children: ReactNode }) {
     [userId],
   );
 
-  const updateOpportunity = useCallback<OSState["updateOpportunity"]>(
+  const updateNote = useCallback<OSState["updateNote"]>(
     async (id, patch) => {
       await mutate({
-        label: "Update opportunity",
+        label: "Update note",
         optimistic: (ws) => ({
           ...ws,
-          opportunities: ws.opportunities.map((o) =>
-            o.id === id ? { ...o, ...patch, updatedAt: nowISO() } : o,
-          ),
+          notes: ws.notes.map((n) => (n.id === id ? { ...n, ...patch, updatedAt: nowISO() } : n)),
         }),
-        persist: (repo, uid) => repo.updateOpportunity(uid, id, patch),
+        persist: (repo, uid) => repo.updateNote(uid, id, patch),
       });
     },
     [mutate],
   );
 
-  const deleteOpportunity = useCallback<OSState["deleteOpportunity"]>(
+  const deleteNote = useCallback<OSState["deleteNote"]>(
     async (id) => {
       await mutate({
-        label: "Delete opportunity",
-        optimistic: (ws) => ({
-          ...ws,
-          opportunities: ws.opportunities.filter((o) => o.id !== id),
-        }),
-        persist: (repo, uid) => repo.deleteOpportunity(uid, id),
+        label: "Delete note",
+        optimistic: (ws) => ({ ...ws, notes: ws.notes.filter((n) => n.id !== id) }),
+        persist: (repo, uid) => repo.deleteNote(uid, id),
       });
     },
     [mutate],
   );
-
-  const markNotificationRead = useCallback<OSState["markNotificationRead"]>(
-    async (id, read) => {
-      await mutate({
-        label: "Update notification",
-        optimistic: (ws) => ({
-          ...ws,
-          notifications: ws.notifications.map((n) => (n.id === id ? { ...n, read } : n)),
-        }),
-        persist: (repo, uid) => repo.updateNotification(uid, id, { read }),
-      });
-    },
-    [mutate],
-  );
-
-  const markAllNotificationsRead = useCallback<OSState["markAllNotificationsRead"]>(async () => {
-    await mutate({
-      label: "Mark all read",
-      optimistic: (ws) => ({
-        ...ws,
-        notifications: ws.notifications.map((n) => ({ ...n, read: true })),
-      }),
-      persist: (repo, uid) => repo.markAllNotificationsRead(uid),
-    });
-  }, [mutate]);
 
   const savePreferences = useCallback<OSState["savePreferences"]>(
     async (patch) => {
@@ -554,17 +443,6 @@ export function OSProvider({ children }: { children: ReactNode }) {
       });
     },
     [workspace.preferences, userId, mutate],
-  );
-
-  const toggleMutedCategory = useCallback<OSState["toggleMutedCategory"]>(
-    async (category) => {
-      const current = workspace.preferences.mutedNotificationCategories;
-      const next = current.includes(category)
-        ? current.filter((c) => c !== category)
-        : [...current, category];
-      await savePreferences({ mutedNotificationCategories: next });
-    },
-    [workspace.preferences.mutedNotificationCategories, savePreferences],
   );
 
   const applyIntegration = useCallback<OSState["applyIntegration"]>(
@@ -688,13 +566,6 @@ export function OSProvider({ children }: { children: ReactNode }) {
     return repo.exportWorkspace(userId);
   }, [userId, workspace]);
 
-  const resetDemoData = useCallback<OSState["resetDemoData"]>(async () => {
-    const repo = repoRef.current;
-    if (!repo) return;
-    const fresh = await repo.resetToDemoData(userId);
-    setWorkspace(fresh);
-  }, [userId]);
-
   const deleteAllData = useCallback<OSState["deleteAllData"]>(async () => {
     const repo = repoRef.current;
     if (!repo) return;
@@ -730,14 +601,9 @@ export function OSProvider({ children }: { children: ReactNode }) {
       updateTask,
       toggleTask,
       deleteTask,
-      moveTask,
-      saveFocusSession,
-      createOpportunity,
-      updateOpportunity,
-      deleteOpportunity,
-      markNotificationRead,
-      markAllNotificationsRead,
-      toggleMutedCategory,
+      createNote,
+      updateNote,
+      deleteNote,
       savePreferences,
       applyIntegration,
       recordSyncRun,
@@ -747,15 +613,10 @@ export function OSProvider({ children }: { children: ReactNode }) {
       importAssignments,
       applyWorkspacePatch,
       exportWorkspace,
-      resetDemoData,
       deleteAllData,
       theme,
       resolvedTheme,
       setTheme,
-      paletteOpen,
-      setPaletteOpen,
-      quickAddOpen,
-      setQuickAddOpen,
       connection,
       pendingWrites,
       syncing,
@@ -773,14 +634,9 @@ export function OSProvider({ children }: { children: ReactNode }) {
       updateTask,
       toggleTask,
       deleteTask,
-      moveTask,
-      saveFocusSession,
-      createOpportunity,
-      updateOpportunity,
-      deleteOpportunity,
-      markNotificationRead,
-      markAllNotificationsRead,
-      toggleMutedCategory,
+      createNote,
+      updateNote,
+      deleteNote,
       savePreferences,
       applyIntegration,
       recordSyncRun,
@@ -790,13 +646,10 @@ export function OSProvider({ children }: { children: ReactNode }) {
       importAssignments,
       applyWorkspacePatch,
       exportWorkspace,
-      resetDemoData,
       deleteAllData,
       theme,
       resolvedTheme,
       setTheme,
-      paletteOpen,
-      quickAddOpen,
       connection,
       pendingWrites,
       syncing,
@@ -810,10 +663,4 @@ export function useOS(): OSState {
   const ctx = useContext(Ctx);
   if (!ctx) throw new Error("useOS must be used inside <OSProvider>");
   return ctx;
-}
-
-export function useUnreadNotifications(): AppNotification[] {
-  const { workspace } = useOS();
-  const muted = new Set(workspace.preferences.mutedNotificationCategories);
-  return workspace.notifications.filter((n) => !n.read && !muted.has(n.category));
 }

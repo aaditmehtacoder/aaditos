@@ -30,18 +30,10 @@ export interface RawEvent {
  * calendar beats a personal copy of the same event.
  */
 const SOURCE_RANK: Record<SourceId, number> = {
-  aeries: 110,
   wilcox: 100,
   google_classroom: 90,
   google_calendar: 80,
   manual: 70,
-  github: 40,
-  vercel: 35,
-  gmail: 30,
-  google_drive: 20,
-  discord: 15,
-  linkedin: 10,
-  spotify: 5,
   demo: 1,
 };
 

@@ -1,0 +1,74 @@
+# Keep every account's calendar current, all day, without anyone opening the app.
+#
+# Why this exists rather than only a Vercel cron: Vercel's Hobby plan allows
+# exactly one run per day per cron job. Once a day is not "synced" — a schedule
+# change made at lunch would not appear until the next morning. GitHub Actions
+# schedules are free, have no such limit, and this repository already lives here.
+#
+# `vercel.json` still runs the same endpoint once each morning. That is the
+# floor: if this workflow is ever disabled — GitHub pauses schedules on a repo
+# with no activity for 60 days — syncing degrades to daily rather than stopping.
+#
+# Two secrets are required, under Settings → Secrets and variables → Actions:
+#   APP_URL      https://aaditos.aaditmehta.dev   (no trailing slash)
+#   CRON_SECRET  the same value as in Vercel
+#
+# Without them the job fails loudly instead of silently syncing nothing.
+
+name: Sync
+
+on:
+  schedule:
+    # Every 15 minutes between 6am and 11pm Pacific. Cron here is UTC and does
+    # not follow DST, so this is written for PDT (UTC-7) and drifts an hour in
+    # winter — harmless. Overnight is skipped on purpose: nothing at school
+    # changes at 3am, and the runs would be pure waste.
+    - cron: "*/15 13-23,0-6 * * *"
+  # Lets you fire one by hand from the Actions tab to test the whole chain.
+  workflow_dispatch:
+
+# A slow run must never overlap the next one: two concurrent runs both delete
+# and re-insert the same calendar, and the interleaving can leave a gap.
+concurrency:
+  group: sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger sync
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${APP_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::APP_URL and CRON_SECRET must both be set as repository secrets."
+            exit 1
+          fi
+
+          # The secret goes in the Authorization header, never the query string:
+          # a query string lands in logs and in any proxy in between.
+          status=$(curl -sS -o response.json -w '%{http_code}' \
+            --max-time 120 --retry 2 --retry-delay 5 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${APP_URL}/api/cron/sync")
+
+          echo "HTTP ${status}"
+          cat response.json
+          echo
+
+          if [ "${status}" != "200" ]; then
+            echo "::error::Sync endpoint returned ${status}."
+            exit 1
+          fi
+
+          # A 200 with ok:false means a provider or the database write failed.
+          # Surface it as a warning rather than a failure: one bad provider is
+          # not worth a red X on every run, but it should not be invisible.
+          if ! grep -q '"ok":true' response.json; then
+            echo "::warning::Sync completed with errors — see the response above."
+          fi

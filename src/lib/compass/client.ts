@@ -26,7 +26,6 @@ export function clientId(): string {
 export interface StreamOptions {
   messages: CompassMessage[];
   snapshot: CompassSnapshot;
-  tone: "concise" | "coach" | "detailed";
   signal?: AbortSignal | undefined;
   onEvent: (event: CompassEvent) => void;
 }
@@ -40,7 +39,6 @@ export async function streamCompass(opts: StreamOptions): Promise<void> {
       body: JSON.stringify({
         messages: opts.messages,
         snapshot: opts.snapshot,
-        tone: opts.tone,
         clientId: clientId(),
       }),
       signal: opts.signal ?? null,

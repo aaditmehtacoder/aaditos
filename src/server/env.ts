@@ -21,13 +21,26 @@ export const serverEnv = {
   get openaiApiKey(): string | undefined {
     return read("OPENAI_API_KEY");
   },
+  /**
+   * The one model, used for both answering and filing.
+   *
+   * terra, not the cheaper luna, and both jobs measurably need it:
+   *
+   * Answering — given a note saying "I always underestimate the outline, last
+   * one took 90 minutes", terra reprices a 30-minute estimate at 90 and
+   * reorders the evening around it; luna schedules the 30 and mentions the
+   * risk afterwards.
+   *
+   * Filing — on "fin lit packet friday, and Robson wants the thesis arguable",
+   * both split it into a task and a note, but luna files the note under
+   * Financial Lit because that was the last class mentioned, while terra works
+   * out it belongs to English. A note on the wrong class page is worse than no
+   * note, because that is where it will be looked for.
+   */
   get openaiModel(): string {
-    // luna is the cost tier of the 5.6 family: 10x cheaper per token than
-    // terra and 25x cheaper than sol. It handles Compass's workload (tool calls
-    // over a snapshot, short factual answers) with no measured loss in
-    // correctness, so it is the safe default if OPENAI_MODEL is ever unset.
-    return read("OPENAI_MODEL") ?? "gpt-5.6-luna";
+    return read("OPENAI_MODEL") ?? "gpt-5.6-terra";
   },
+
   /**
    * Per-response ceiling. Hard-capped at 4000 regardless of the environment:
    * a typo adding a zero should cost a truncated answer, not a large bill.
@@ -127,33 +140,15 @@ export const serverEnv = {
   get accountPasswordSecret(): string | undefined {
     return read("ACCOUNT_PASSWORD_SECRET");
   },
-  /** Public by design — it is baked into every push subscription in the browser. */
-  get vapidPublicKey(): string | undefined {
-    return read("VAPID_PUBLIC_KEY") ?? read("VITE_VAPID_PUBLIC_KEY");
-  },
-  /** Secret. Signs the VAPID JWT that proves a push came from this server. */
-  get vapidPrivateKey(): string | undefined {
-    return read("VAPID_PRIVATE_KEY");
-  },
-  /** Contact address push services use to reach the operator. */
-  get vapidSubject(): string | undefined {
-    return read("VAPID_SUBJECT");
-  },
 };
 
 export function providerCapabilities(): ProviderCapabilities {
   return {
     openai: Boolean(serverEnv.openaiApiKey),
     openaiModel: serverEnv.openaiModel,
-    github: Boolean(serverEnv.githubToken),
-    vercel: Boolean(serverEnv.vercelToken),
-    spotify: Boolean(
-      serverEnv.spotifyClientId && serverEnv.spotifyClientSecret && serverEnv.spotifyRefreshToken,
-    ),
     google: Boolean(serverEnv.googleClientId && serverEnv.googleClientSecret),
     supabase: Boolean(serverEnv.supabaseUrl && serverEnv.supabaseAnonKey),
     cron: Boolean(serverEnv.cronSecret),
-    aeries: Boolean(serverEnv.aeriesBaseUrl && serverEnv.aeriesCert && serverEnv.aeriesStudentId),
     wilcox: true,
     weather: true,
   };

@@ -43,7 +43,6 @@ const snapshot: CompassSnapshot = {
       estimateMin: 45,
       dueAt: at(17, 30),
       dueAllDay: false,
-      project: "Venu AI",
       subtasksOpen: 1,
     },
     {
@@ -114,28 +113,32 @@ const snapshot: CompassSnapshot = {
       source: "wilcox",
     },
   ],
-  projects: [
+  notes: [
     {
-      id: "origami-prep",
-      name: "Origami Prep",
-      objective: "Keep the streak engine reliable",
-      health: "at_risk",
-      progress: 60,
-      blockers: ["streak-reminder.yml failing"],
-      openTasks: 1,
-      recentActivity: ["Workflow failed"],
+      id: "n1",
+      course: "Algebra 2",
+      kind: "thought",
+      body: "I keep losing points on sign errors when factoring, not on the method.",
+      createdAt: at(9),
+      madeIntoTask: false,
+    },
+    {
+      id: "n2",
+      course: "Biology",
+      kind: "idea",
+      body: "Do the lab write-up on the enzyme experiment instead of the assigned one.",
+      createdAt: at(10),
+      madeIntoTask: true,
+    },
+    {
+      id: "n3",
+      course: "Algebra 2",
+      kind: "idea",
+      body: "Ask about extra credit before the unit test.",
+      createdAt: at(11),
+      madeIntoTask: false,
     },
   ],
-  opportunities: [
-    { id: "o1", org: "hackUMBC", title: "hackUMBC 2026", type: "hackathon", stage: "interested" },
-    { id: "o2", org: "Venu AI", title: "Part-time SWE", type: "internship", stage: "interview" },
-  ],
-  focus: {
-    last7DaysMin: 275,
-    byCategory: { work: 180, school: 95 },
-    sessionCount: 6,
-    longestSessionMin: 55,
-  },
 };
 
 describe("tool definitions", () => {
@@ -209,18 +212,25 @@ describe("read tools", () => {
     expect(today.data.events.map((e) => e.id).sort()).toEqual(["e1", "e2"]);
   });
 
-  it("get_project_status resolves by name as well as id", () => {
-    const byName = runTool("get_project_status", { projectId: "origami prep" }, snapshot) as {
-      data: { name?: string };
+  it("list_notes returns every note when nothing is filtered", () => {
+    const result = runTool("list_notes", {}, snapshot) as {
+      data: { notes: Array<{ id: string }>; total: number };
     };
-    expect(byName.data.name).toBe("Origami Prep");
+    expect(result.data.total).toBe(3);
   });
 
-  it("list_opportunities filters by stage", () => {
-    const result = runTool("list_opportunities", { stage: "interview" }, snapshot) as {
-      data: { opportunities: Array<{ id: string }> };
+  it("list_notes filters by class, matching the name case-insensitively", () => {
+    const result = runTool("list_notes", { courseName: "algebra 2" }, snapshot) as {
+      data: { notes: Array<{ id: string }> };
     };
-    expect(result.data.opportunities.map((o) => o.id)).toEqual(["o2"]);
+    expect(result.data.notes.map((n) => n.id)).toEqual(["n1", "n3"]);
+  });
+
+  it("list_notes filters by kind", () => {
+    const result = runTool("list_notes", { kind: "idea" }, snapshot) as {
+      data: { notes: Array<{ id: string }> };
+    };
+    expect(result.data.notes.map((n) => n.id)).toEqual(["n2", "n3"]);
   });
 
   it("find_schedule_conflicts detects the standup overlap", () => {
@@ -229,14 +239,6 @@ describe("read tools", () => {
     };
     expect(result.data.conflicts).toHaveLength(1);
     expect(result.data.conflicts[0]?.overlapMin).toBe(15);
-  });
-
-  it("get_focus_summary reports real minutes", () => {
-    const result = runTool("get_focus_summary", { days: 7 }, snapshot) as {
-      data: { totalMin: number; sessionCount: number };
-    };
-    expect(result.data.totalMin).toBe(275);
-    expect(result.data.sessionCount).toBe(6);
   });
 });
 

@@ -1,4 +1,4 @@
-/** Wire types shared by the Compass client and the `/api/compass` server route. */
+/** Wire types shared by the assistant client and the `/api/compass` server route. */
 
 import type { TaskDraft } from "@/lib/core/nl-task";
 import type { Priority, TaskCategory } from "@/lib/core/types";
@@ -13,7 +13,6 @@ export interface CompactTask {
   dueAt?: string | undefined;
   dueAllDay: boolean;
   course?: string | undefined;
-  project?: string | undefined;
   subtasksOpen: number;
 }
 
@@ -39,33 +38,21 @@ export interface CompactEvent {
   location?: string | undefined;
 }
 
-export interface CompactProject {
+/**
+ * A note the assistant can read.
+ *
+ * Notes are the part of the workspace that carries intent rather than
+ * schedule — what a teacher actually wants, what the user was stuck on, what
+ * they thought of doing. Without them the assistant can only ever answer from
+ * deadlines, which is the shallow half of the question.
+ */
+export interface CompactNote {
   id: string;
-  name: string;
-  objective: string;
-  health: string;
-  progress: number;
-  blockers: string[];
-  deadlineAt?: string | undefined;
-  openTasks: number;
-  recentActivity: string[];
-}
-
-export interface CompactOpportunity {
-  id: string;
-  org: string;
-  title: string;
-  type: string;
-  stage: string;
-  deadlineAt?: string | undefined;
-  nextAction?: string | undefined;
-}
-
-export interface CompactFocus {
-  last7DaysMin: number;
-  byCategory: Record<string, number>;
-  sessionCount: number;
-  longestSessionMin: number;
+  course?: string | undefined;
+  kind: string;
+  body: string;
+  createdAt: string;
+  madeIntoTask: boolean;
 }
 
 export interface CompassSnapshot {
@@ -77,9 +64,7 @@ export interface CompassSnapshot {
   tasks: CompactTask[];
   assignments: CompactAssignment[];
   events: CompactEvent[];
-  projects: CompactProject[];
-  opportunities: CompactOpportunity[];
-  focus: CompactFocus;
+  notes: CompactNote[];
   courses: string[];
   isDemo: boolean;
 }
@@ -118,38 +103,14 @@ export interface ConflictReport {
   checkedDays: number;
 }
 
-export interface FocusSummaryPayload {
-  days: number;
-  totalMin: number;
-  sessionCount: number;
-  byCategory: Array<{ category: string; minutes: number }>;
-  plannedVsCompleted: { plannedMin: number; completedMin: number };
-  mostProductiveHour?: string | undefined;
-}
-
-export interface ProjectStatusPayload {
-  id: string;
-  name: string;
-  health: string;
-  progress: number;
-  objective: string;
-  blockers: string[];
-  nextActions: string[];
-  deadlineAt?: string | undefined;
-  recentActivity: string[];
-}
-
 export type CompassToolName =
   | "list_tasks"
   | "get_task"
   | "list_assignments"
   | "list_events"
-  | "list_projects"
-  | "get_project_status"
-  | "list_opportunities"
+  | "list_notes"
   | "create_daily_plan"
   | "find_schedule_conflicts"
-  | "get_focus_summary"
   | "propose_task"
   | "update_task";
 
@@ -172,6 +133,5 @@ export type CompassEvent =
 export interface CompassRequestBody {
   messages: CompassMessage[];
   snapshot: CompassSnapshot;
-  tone: "concise" | "coach" | "detailed";
   clientId: string;
 }

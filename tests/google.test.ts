@@ -26,23 +26,21 @@ describe("GOOGLE_SCOPES", () => {
   const dataScopes = GOOGLE_SCOPES.filter((s) => s.startsWith("https://"));
 
   /**
-   * `calendar.events` is the single deliberate exception to read-only, added so
-   * a confirmed event reaches the user's real calendar. Pinning it by name is
-   * the point: any *other* write scope appearing here should fail this test
-   * rather than ride along unnoticed.
+   * Every scope here is read-only, and this test is what keeps it that way: a
+   * write scope added later rides along invisibly in an OAuth consent screen,
+   * and this is the thing that would notice.
    */
-  it("requests exactly one write scope, and it is calendar.events", () => {
+  it("requests no write scope at all", () => {
     const writable = dataScopes.filter((s) => !s.endsWith(".readonly"));
-    expect(writable).toEqual(["https://www.googleapis.com/auth/calendar.events"]);
+    expect(writable).toEqual([]);
   });
 
   it("never requests the full calendar scope, which could delete calendars", () => {
     expect(GOOGLE_SCOPES).not.toContain("https://www.googleapis.com/auth/calendar");
   });
 
-  it("requests Gmail read-only, never send or modify", () => {
-    const gmail = GOOGLE_SCOPES.filter((s) => s.includes("gmail"));
-    expect(gmail).toEqual(["https://www.googleapis.com/auth/gmail.readonly"]);
+  it("does not request Gmail", () => {
+    expect(GOOGLE_SCOPES.join(" ")).not.toMatch(/gmail/);
   });
 
   it("does not request Drive", () => {

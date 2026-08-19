@@ -17,14 +17,11 @@ import type { CalendarEvent, IntegrationRecord, SyncRun } from "@/lib/core/types
 import { PROVIDER_INTEGRATION_IDS } from "@/lib/integrations/contracts";
 import { useOS } from "@/lib/store";
 import type {
-  GithubResult,
   ProviderCapabilities,
-  SpotifyResult,
   SyncPayload,
   SyncProvider,
   GoogleStatus,
   SyncRunResult,
-  VercelResult,
   WeatherResult,
 } from "@/lib/integrations/contracts";
 
@@ -58,9 +55,9 @@ export const SYNC_PAYLOAD_KEY = ["sync-payload"] as const;
 /**
  * The most recent sync result, shared across the whole app.
  *
- * Sync can be triggered from Integrations, School or a project page; every
- * consumer must see the same payload, so it lives in the query cache rather
- * than in the calling component's state.
+ * Sync can be triggered from the top bar or from Settings; every consumer must
+ * see the same payload, so it lives in the query cache rather than in the
+ * calling component's state.
  */
 export function useLastSyncPayload(): SyncPayload | null {
   const { data } = useQuery<SyncPayload | null>({
@@ -93,17 +90,9 @@ export interface SyncState {
   error: string | null;
 }
 
-export interface ProviderData {
-  github?: GithubResult | undefined;
-  vercel?: VercelResult | undefined;
-  spotify?: SpotifyResult | undefined;
-  weather?: WeatherResult | undefined;
-}
-
 /** Replace rows that share a `sourceRef`, keep everything else untouched. */
 export function useSync() {
   const {
-    workspace,
     userId,
     applyIntegration,
     recordSyncRun,
@@ -127,13 +116,7 @@ export function useSync() {
         const response = await fetch("/api/sync", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            providers,
-            userId,
-            githubRepos: workspace.projects
-              .map((p) => p.githubRepo)
-              .filter((r): r is string => Boolean(r)),
-          }),
+          body: JSON.stringify({ providers, userId }),
         });
 
         if (!response.ok) {
@@ -159,23 +142,6 @@ export function useSync() {
           }
           if (google.assignments.length > 0) {
             await importAssignments(google.assignments.map((a) => ({ ...a, userId })));
-          }
-        }
-
-        if (payload.aeries?.ok) {
-          const aeries = payload.aeries;
-          // Aeries is the official gradebook, so its course grades win.
-          const gradeFor = new Map(
-            aeries.grades.map((g) => [g.courseName.toLowerCase(), g.grade] as const),
-          );
-          const courses = aeries.courses.map((course) => ({
-            ...course,
-            userId,
-            grade: gradeFor.get(course.name.toLowerCase()) ?? course.grade,
-          }));
-          if (courses.length > 0) await importCourses(courses);
-          if (aeries.assignments.length > 0) {
-            await importAssignments(aeries.assignments.map((a) => ({ ...a, userId })));
           }
         }
 
@@ -224,7 +190,6 @@ export function useSync() {
     },
     [
       userId,
-      workspace.projects,
       importEvents,
       importCourses,
       importAssignments,

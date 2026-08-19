@@ -10,74 +10,31 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as CompassRouteImport } from './routes/compass'
-import { Route as FocusRouteImport } from './routes/focus'
-import { Route as InboxRouteImport } from './routes/inbox'
-import { Route as IntegrationsRouteImport } from './routes/integrations'
-import { Route as NotificationsRouteImport } from './routes/notifications'
-import { Route as OpportunitiesRouteImport } from './routes/opportunities'
-import { Route as SchoolRouteImport } from './routes/school'
+import { Route as AskRouteImport } from './routes/ask'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SigninRouteImport } from './routes/signin'
-import { Route as TasksRouteImport } from './routes/tasks'
+import { Route as ApiCaptureRouteImport } from './routes/api.capture'
 import { Route as ApiCompassRouteImport } from './routes/api.compass'
 import { Route as ApiConfigRouteImport } from './routes/api.config'
-import { Route as ApiInboxRouteImport } from './routes/api.inbox'
 import { Route as ApiSyncRouteImport } from './routes/api.sync'
 import { Route as ApiWeatherRouteImport } from './routes/api.weather'
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
-import { Route as ProjectsIndexRouteImport } from './routes/projects/index'
-import { Route as ProjectsProjectIdRouteImport } from './routes/projects/$projectId'
+import { Route as ClassesIndexRouteImport } from './routes/classes.index'
+import { Route as ClassesCourseIdRouteImport } from './routes/classes.$courseId'
 import { Route as ApiAuthPasscodeRouteImport } from './routes/api.auth.passcode'
-import { Route as ApiCompassTaskRouteImport } from './routes/api.compass.task'
-import { Route as ApiCronPushRouteImport } from './routes/api.cron.push'
 import { Route as ApiCronSyncRouteImport } from './routes/api.cron.sync'
 import { Route as ApiGoogleAuthRouteImport } from './routes/api.google.auth'
-import { Route as ApiGoogleCalendarRouteImport } from './routes/api.google.calendar'
 import { Route as ApiGoogleCallbackRouteImport } from './routes/api.google.callback'
 import { Route as ApiGoogleStatusRouteImport } from './routes/api.google.status'
-import { Route as ApiPushNextRouteImport } from './routes/api.push.next'
-import { Route as ApiPushSubscribeRouteImport } from './routes/api.push.subscribe'
-import { Route as ApiSpotifyControlRouteImport } from './routes/api.spotify.control'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const CompassRoute = CompassRouteImport.update({
-  id: '/compass',
-  path: '/compass',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const FocusRoute = FocusRouteImport.update({
-  id: '/focus',
-  path: '/focus',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const InboxRoute = InboxRouteImport.update({
-  id: '/inbox',
-  path: '/inbox',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const IntegrationsRoute = IntegrationsRouteImport.update({
-  id: '/integrations',
-  path: '/integrations',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const NotificationsRoute = NotificationsRouteImport.update({
-  id: '/notifications',
-  path: '/notifications',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const OpportunitiesRoute = OpportunitiesRouteImport.update({
-  id: '/opportunities',
-  path: '/opportunities',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SchoolRoute = SchoolRouteImport.update({
-  id: '/school',
-  path: '/school',
+const AskRoute = AskRouteImport.update({
+  id: '/ask',
+  path: '/ask',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -90,9 +47,9 @@ const SigninRoute = SigninRouteImport.update({
   path: '/signin',
   getParentRoute: () => rootRouteImport,
 } as any)
-const TasksRoute = TasksRouteImport.update({
-  id: '/tasks',
-  path: '/tasks',
+const ApiCaptureRoute = ApiCaptureRouteImport.update({
+  id: '/api/capture',
+  path: '/api/capture',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiCompassRoute = ApiCompassRouteImport.update({
@@ -103,11 +60,6 @@ const ApiCompassRoute = ApiCompassRouteImport.update({
 const ApiConfigRoute = ApiConfigRouteImport.update({
   id: '/api/config',
   path: '/api/config',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiInboxRoute = ApiInboxRouteImport.update({
-  id: '/api/inbox',
-  path: '/api/inbox',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiSyncRoute = ApiSyncRouteImport.update({
@@ -125,29 +77,19 @@ const AuthCallbackRoute = AuthCallbackRouteImport.update({
   path: '/auth/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ProjectsIndexRoute = ProjectsIndexRouteImport.update({
-  id: '/projects/',
-  path: '/projects/',
+const ClassesIndexRoute = ClassesIndexRouteImport.update({
+  id: '/classes/',
+  path: '/classes/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ProjectsProjectIdRoute = ProjectsProjectIdRouteImport.update({
-  id: '/projects/$projectId',
-  path: '/projects/$projectId',
+const ClassesCourseIdRoute = ClassesCourseIdRouteImport.update({
+  id: '/classes/$courseId',
+  path: '/classes/$courseId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAuthPasscodeRoute = ApiAuthPasscodeRouteImport.update({
   id: '/api/auth/passcode',
   path: '/api/auth/passcode',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiCompassTaskRoute = ApiCompassTaskRouteImport.update({
-  id: '/task',
-  path: '/task',
-  getParentRoute: () => ApiCompassRoute,
-} as any)
-const ApiCronPushRoute = ApiCronPushRouteImport.update({
-  id: '/api/cron/push',
-  path: '/api/cron/push',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiCronSyncRoute = ApiCronSyncRouteImport.update({
@@ -160,11 +102,6 @@ const ApiGoogleAuthRoute = ApiGoogleAuthRouteImport.update({
   path: '/api/google/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiGoogleCalendarRoute = ApiGoogleCalendarRouteImport.update({
-  id: '/api/google/calendar',
-  path: '/api/google/calendar',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiGoogleCallbackRoute = ApiGoogleCallbackRouteImport.update({
   id: '/api/google/callback',
   path: '/api/google/callback',
@@ -175,248 +112,143 @@ const ApiGoogleStatusRoute = ApiGoogleStatusRouteImport.update({
   path: '/api/google/status',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPushNextRoute = ApiPushNextRouteImport.update({
-  id: '/api/push/next',
-  path: '/api/push/next',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPushSubscribeRoute = ApiPushSubscribeRouteImport.update({
-  id: '/api/push/subscribe',
-  path: '/api/push/subscribe',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiSpotifyControlRoute = ApiSpotifyControlRouteImport.update({
-  id: '/api/spotify/control',
-  path: '/api/spotify/control',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/compass': typeof CompassRoute
-  '/focus': typeof FocusRoute
-  '/inbox': typeof InboxRoute
-  '/integrations': typeof IntegrationsRoute
-  '/notifications': typeof NotificationsRoute
-  '/opportunities': typeof OpportunitiesRoute
-  '/school': typeof SchoolRoute
+  '/ask': typeof AskRoute
   '/settings': typeof SettingsRoute
   '/signin': typeof SigninRoute
-  '/tasks': typeof TasksRoute
-  '/api/compass': typeof ApiCompassRouteWithChildren
+  '/api/capture': typeof ApiCaptureRoute
+  '/api/compass': typeof ApiCompassRoute
   '/api/config': typeof ApiConfigRoute
-  '/api/inbox': typeof ApiInboxRoute
   '/api/sync': typeof ApiSyncRoute
   '/api/weather': typeof ApiWeatherRoute
   '/auth/callback': typeof AuthCallbackRoute
-  '/projects/$projectId': typeof ProjectsProjectIdRoute
-  '/projects/': typeof ProjectsIndexRoute
+  '/classes/$courseId': typeof ClassesCourseIdRoute
+  '/classes/': typeof ClassesIndexRoute
   '/api/auth/passcode': typeof ApiAuthPasscodeRoute
-  '/api/compass/task': typeof ApiCompassTaskRoute
-  '/api/cron/push': typeof ApiCronPushRoute
   '/api/cron/sync': typeof ApiCronSyncRoute
   '/api/google/auth': typeof ApiGoogleAuthRoute
-  '/api/google/calendar': typeof ApiGoogleCalendarRoute
   '/api/google/callback': typeof ApiGoogleCallbackRoute
   '/api/google/status': typeof ApiGoogleStatusRoute
-  '/api/push/next': typeof ApiPushNextRoute
-  '/api/push/subscribe': typeof ApiPushSubscribeRoute
-  '/api/spotify/control': typeof ApiSpotifyControlRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/compass': typeof CompassRoute
-  '/focus': typeof FocusRoute
-  '/inbox': typeof InboxRoute
-  '/integrations': typeof IntegrationsRoute
-  '/notifications': typeof NotificationsRoute
-  '/opportunities': typeof OpportunitiesRoute
-  '/school': typeof SchoolRoute
+  '/ask': typeof AskRoute
   '/settings': typeof SettingsRoute
   '/signin': typeof SigninRoute
-  '/tasks': typeof TasksRoute
-  '/api/compass': typeof ApiCompassRouteWithChildren
+  '/api/capture': typeof ApiCaptureRoute
+  '/api/compass': typeof ApiCompassRoute
   '/api/config': typeof ApiConfigRoute
-  '/api/inbox': typeof ApiInboxRoute
   '/api/sync': typeof ApiSyncRoute
   '/api/weather': typeof ApiWeatherRoute
   '/auth/callback': typeof AuthCallbackRoute
-  '/projects/$projectId': typeof ProjectsProjectIdRoute
-  '/projects': typeof ProjectsIndexRoute
+  '/classes/$courseId': typeof ClassesCourseIdRoute
+  '/classes': typeof ClassesIndexRoute
   '/api/auth/passcode': typeof ApiAuthPasscodeRoute
-  '/api/compass/task': typeof ApiCompassTaskRoute
-  '/api/cron/push': typeof ApiCronPushRoute
   '/api/cron/sync': typeof ApiCronSyncRoute
   '/api/google/auth': typeof ApiGoogleAuthRoute
-  '/api/google/calendar': typeof ApiGoogleCalendarRoute
   '/api/google/callback': typeof ApiGoogleCallbackRoute
   '/api/google/status': typeof ApiGoogleStatusRoute
-  '/api/push/next': typeof ApiPushNextRoute
-  '/api/push/subscribe': typeof ApiPushSubscribeRoute
-  '/api/spotify/control': typeof ApiSpotifyControlRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/compass': typeof CompassRoute
-  '/focus': typeof FocusRoute
-  '/inbox': typeof InboxRoute
-  '/integrations': typeof IntegrationsRoute
-  '/notifications': typeof NotificationsRoute
-  '/opportunities': typeof OpportunitiesRoute
-  '/school': typeof SchoolRoute
+  '/ask': typeof AskRoute
   '/settings': typeof SettingsRoute
   '/signin': typeof SigninRoute
-  '/tasks': typeof TasksRoute
-  '/api/compass': typeof ApiCompassRouteWithChildren
+  '/api/capture': typeof ApiCaptureRoute
+  '/api/compass': typeof ApiCompassRoute
   '/api/config': typeof ApiConfigRoute
-  '/api/inbox': typeof ApiInboxRoute
   '/api/sync': typeof ApiSyncRoute
   '/api/weather': typeof ApiWeatherRoute
   '/auth/callback': typeof AuthCallbackRoute
-  '/projects/$projectId': typeof ProjectsProjectIdRoute
-  '/projects/': typeof ProjectsIndexRoute
+  '/classes/$courseId': typeof ClassesCourseIdRoute
+  '/classes/': typeof ClassesIndexRoute
   '/api/auth/passcode': typeof ApiAuthPasscodeRoute
-  '/api/compass/task': typeof ApiCompassTaskRoute
-  '/api/cron/push': typeof ApiCronPushRoute
   '/api/cron/sync': typeof ApiCronSyncRoute
   '/api/google/auth': typeof ApiGoogleAuthRoute
-  '/api/google/calendar': typeof ApiGoogleCalendarRoute
   '/api/google/callback': typeof ApiGoogleCallbackRoute
   '/api/google/status': typeof ApiGoogleStatusRoute
-  '/api/push/next': typeof ApiPushNextRoute
-  '/api/push/subscribe': typeof ApiPushSubscribeRoute
-  '/api/spotify/control': typeof ApiSpotifyControlRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/compass'
-    | '/focus'
-    | '/inbox'
-    | '/integrations'
-    | '/notifications'
-    | '/opportunities'
-    | '/school'
+    | '/ask'
     | '/settings'
     | '/signin'
-    | '/tasks'
+    | '/api/capture'
     | '/api/compass'
     | '/api/config'
-    | '/api/inbox'
     | '/api/sync'
     | '/api/weather'
     | '/auth/callback'
-    | '/projects/$projectId'
-    | '/projects/'
+    | '/classes/$courseId'
+    | '/classes/'
     | '/api/auth/passcode'
-    | '/api/compass/task'
-    | '/api/cron/push'
     | '/api/cron/sync'
     | '/api/google/auth'
-    | '/api/google/calendar'
     | '/api/google/callback'
     | '/api/google/status'
-    | '/api/push/next'
-    | '/api/push/subscribe'
-    | '/api/spotify/control'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/compass'
-    | '/focus'
-    | '/inbox'
-    | '/integrations'
-    | '/notifications'
-    | '/opportunities'
-    | '/school'
+    | '/ask'
     | '/settings'
     | '/signin'
-    | '/tasks'
+    | '/api/capture'
     | '/api/compass'
     | '/api/config'
-    | '/api/inbox'
     | '/api/sync'
     | '/api/weather'
     | '/auth/callback'
-    | '/projects/$projectId'
-    | '/projects'
+    | '/classes/$courseId'
+    | '/classes'
     | '/api/auth/passcode'
-    | '/api/compass/task'
-    | '/api/cron/push'
     | '/api/cron/sync'
     | '/api/google/auth'
-    | '/api/google/calendar'
     | '/api/google/callback'
     | '/api/google/status'
-    | '/api/push/next'
-    | '/api/push/subscribe'
-    | '/api/spotify/control'
   id:
     | '__root__'
     | '/'
-    | '/compass'
-    | '/focus'
-    | '/inbox'
-    | '/integrations'
-    | '/notifications'
-    | '/opportunities'
-    | '/school'
+    | '/ask'
     | '/settings'
     | '/signin'
-    | '/tasks'
+    | '/api/capture'
     | '/api/compass'
     | '/api/config'
-    | '/api/inbox'
     | '/api/sync'
     | '/api/weather'
     | '/auth/callback'
-    | '/projects/$projectId'
-    | '/projects/'
+    | '/classes/$courseId'
+    | '/classes/'
     | '/api/auth/passcode'
-    | '/api/compass/task'
-    | '/api/cron/push'
     | '/api/cron/sync'
     | '/api/google/auth'
-    | '/api/google/calendar'
     | '/api/google/callback'
     | '/api/google/status'
-    | '/api/push/next'
-    | '/api/push/subscribe'
-    | '/api/spotify/control'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  CompassRoute: typeof CompassRoute
-  FocusRoute: typeof FocusRoute
-  InboxRoute: typeof InboxRoute
-  IntegrationsRoute: typeof IntegrationsRoute
-  NotificationsRoute: typeof NotificationsRoute
-  OpportunitiesRoute: typeof OpportunitiesRoute
-  SchoolRoute: typeof SchoolRoute
+  AskRoute: typeof AskRoute
   SettingsRoute: typeof SettingsRoute
   SigninRoute: typeof SigninRoute
-  TasksRoute: typeof TasksRoute
-  ApiCompassRoute: typeof ApiCompassRouteWithChildren
+  ApiCaptureRoute: typeof ApiCaptureRoute
+  ApiCompassRoute: typeof ApiCompassRoute
   ApiConfigRoute: typeof ApiConfigRoute
-  ApiInboxRoute: typeof ApiInboxRoute
   ApiSyncRoute: typeof ApiSyncRoute
   ApiWeatherRoute: typeof ApiWeatherRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
-  ProjectsProjectIdRoute: typeof ProjectsProjectIdRoute
-  ProjectsIndexRoute: typeof ProjectsIndexRoute
+  ClassesCourseIdRoute: typeof ClassesCourseIdRoute
+  ClassesIndexRoute: typeof ClassesIndexRoute
   ApiAuthPasscodeRoute: typeof ApiAuthPasscodeRoute
-  ApiCronPushRoute: typeof ApiCronPushRoute
   ApiCronSyncRoute: typeof ApiCronSyncRoute
   ApiGoogleAuthRoute: typeof ApiGoogleAuthRoute
-  ApiGoogleCalendarRoute: typeof ApiGoogleCalendarRoute
   ApiGoogleCallbackRoute: typeof ApiGoogleCallbackRoute
   ApiGoogleStatusRoute: typeof ApiGoogleStatusRoute
-  ApiPushNextRoute: typeof ApiPushNextRoute
-  ApiPushSubscribeRoute: typeof ApiPushSubscribeRoute
-  ApiSpotifyControlRoute: typeof ApiSpotifyControlRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -428,53 +260,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/compass': {
-      id: '/compass'
-      path: '/compass'
-      fullPath: '/compass'
-      preLoaderRoute: typeof CompassRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/focus': {
-      id: '/focus'
-      path: '/focus'
-      fullPath: '/focus'
-      preLoaderRoute: typeof FocusRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/inbox': {
-      id: '/inbox'
-      path: '/inbox'
-      fullPath: '/inbox'
-      preLoaderRoute: typeof InboxRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/integrations': {
-      id: '/integrations'
-      path: '/integrations'
-      fullPath: '/integrations'
-      preLoaderRoute: typeof IntegrationsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/notifications': {
-      id: '/notifications'
-      path: '/notifications'
-      fullPath: '/notifications'
-      preLoaderRoute: typeof NotificationsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/opportunities': {
-      id: '/opportunities'
-      path: '/opportunities'
-      fullPath: '/opportunities'
-      preLoaderRoute: typeof OpportunitiesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/school': {
-      id: '/school'
-      path: '/school'
-      fullPath: '/school'
-      preLoaderRoute: typeof SchoolRouteImport
+    '/ask': {
+      id: '/ask'
+      path: '/ask'
+      fullPath: '/ask'
+      preLoaderRoute: typeof AskRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -491,11 +281,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SigninRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/tasks': {
-      id: '/tasks'
-      path: '/tasks'
-      fullPath: '/tasks'
-      preLoaderRoute: typeof TasksRouteImport
+    '/api/capture': {
+      id: '/api/capture'
+      path: '/api/capture'
+      fullPath: '/api/capture'
+      preLoaderRoute: typeof ApiCaptureRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/compass': {
@@ -510,13 +300,6 @@ declare module '@tanstack/react-router' {
       path: '/api/config'
       fullPath: '/api/config'
       preLoaderRoute: typeof ApiConfigRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/inbox': {
-      id: '/api/inbox'
-      path: '/api/inbox'
-      fullPath: '/api/inbox'
-      preLoaderRoute: typeof ApiInboxRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/sync': {
@@ -540,18 +323,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/projects/': {
-      id: '/projects/'
-      path: '/projects'
-      fullPath: '/projects/'
-      preLoaderRoute: typeof ProjectsIndexRouteImport
+    '/classes/': {
+      id: '/classes/'
+      path: '/classes'
+      fullPath: '/classes/'
+      preLoaderRoute: typeof ClassesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/projects/$projectId': {
-      id: '/projects/$projectId'
-      path: '/projects/$projectId'
-      fullPath: '/projects/$projectId'
-      preLoaderRoute: typeof ProjectsProjectIdRouteImport
+    '/classes/$courseId': {
+      id: '/classes/$courseId'
+      path: '/classes/$courseId'
+      fullPath: '/classes/$courseId'
+      preLoaderRoute: typeof ClassesCourseIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/auth/passcode': {
@@ -559,20 +342,6 @@ declare module '@tanstack/react-router' {
       path: '/api/auth/passcode'
       fullPath: '/api/auth/passcode'
       preLoaderRoute: typeof ApiAuthPasscodeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/compass/task': {
-      id: '/api/compass/task'
-      path: '/task'
-      fullPath: '/api/compass/task'
-      preLoaderRoute: typeof ApiCompassTaskRouteImport
-      parentRoute: typeof ApiCompassRoute
-    }
-    '/api/cron/push': {
-      id: '/api/cron/push'
-      path: '/api/cron/push'
-      fullPath: '/api/cron/push'
-      preLoaderRoute: typeof ApiCronPushRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/cron/sync': {
@@ -589,13 +358,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiGoogleAuthRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/google/calendar': {
-      id: '/api/google/calendar'
-      path: '/api/google/calendar'
-      fullPath: '/api/google/calendar'
-      preLoaderRoute: typeof ApiGoogleCalendarRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/google/callback': {
       id: '/api/google/callback'
       path: '/api/google/callback'
@@ -610,72 +372,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiGoogleStatusRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/push/next': {
-      id: '/api/push/next'
-      path: '/api/push/next'
-      fullPath: '/api/push/next'
-      preLoaderRoute: typeof ApiPushNextRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/push/subscribe': {
-      id: '/api/push/subscribe'
-      path: '/api/push/subscribe'
-      fullPath: '/api/push/subscribe'
-      preLoaderRoute: typeof ApiPushSubscribeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/spotify/control': {
-      id: '/api/spotify/control'
-      path: '/api/spotify/control'
-      fullPath: '/api/spotify/control'
-      preLoaderRoute: typeof ApiSpotifyControlRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
-interface ApiCompassRouteChildren {
-  ApiCompassTaskRoute: typeof ApiCompassTaskRoute
-}
-
-const ApiCompassRouteChildren: ApiCompassRouteChildren = {
-  ApiCompassTaskRoute: ApiCompassTaskRoute,
-}
-
-const ApiCompassRouteWithChildren = ApiCompassRoute._addFileChildren(
-  ApiCompassRouteChildren,
-)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  CompassRoute: CompassRoute,
-  FocusRoute: FocusRoute,
-  InboxRoute: InboxRoute,
-  IntegrationsRoute: IntegrationsRoute,
-  NotificationsRoute: NotificationsRoute,
-  OpportunitiesRoute: OpportunitiesRoute,
-  SchoolRoute: SchoolRoute,
+  AskRoute: AskRoute,
   SettingsRoute: SettingsRoute,
   SigninRoute: SigninRoute,
-  TasksRoute: TasksRoute,
-  ApiCompassRoute: ApiCompassRouteWithChildren,
+  ApiCaptureRoute: ApiCaptureRoute,
+  ApiCompassRoute: ApiCompassRoute,
   ApiConfigRoute: ApiConfigRoute,
-  ApiInboxRoute: ApiInboxRoute,
   ApiSyncRoute: ApiSyncRoute,
   ApiWeatherRoute: ApiWeatherRoute,
   AuthCallbackRoute: AuthCallbackRoute,
-  ProjectsProjectIdRoute: ProjectsProjectIdRoute,
-  ProjectsIndexRoute: ProjectsIndexRoute,
+  ClassesCourseIdRoute: ClassesCourseIdRoute,
+  ClassesIndexRoute: ClassesIndexRoute,
   ApiAuthPasscodeRoute: ApiAuthPasscodeRoute,
-  ApiCronPushRoute: ApiCronPushRoute,
   ApiCronSyncRoute: ApiCronSyncRoute,
   ApiGoogleAuthRoute: ApiGoogleAuthRoute,
-  ApiGoogleCalendarRoute: ApiGoogleCalendarRoute,
   ApiGoogleCallbackRoute: ApiGoogleCallbackRoute,
   ApiGoogleStatusRoute: ApiGoogleStatusRoute,
-  ApiPushNextRoute: ApiPushNextRoute,
-  ApiPushSubscribeRoute: ApiPushSubscribeRoute,
-  ApiSpotifyControlRoute: ApiSpotifyControlRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

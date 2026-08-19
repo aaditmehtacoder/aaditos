@@ -1,5 +1,4 @@
-import { Link } from "@tanstack/react-router";
-import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
+import { ExternalLink, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { PriorityDot, SourceTag, isExternalSource } from "@/components/os/primitives";
@@ -21,24 +20,15 @@ export function TaskDueLabel({ task, now }: { task: Task; now: Date }) {
   );
 }
 
-export function TaskRow({
-  task,
-  showReorder = false,
-  onOpen,
-  dense = false,
-  index,
-}: {
-  task: Task;
-  showReorder?: boolean;
-  onOpen?: (task: Task) => void;
-  dense?: boolean;
-  index?: number;
-}) {
-  const { toggleTask, moveTask, workspace, now } = useOS();
+/**
+ * One task. The whole row is the checkbox's business — tapping the title
+ * toggles it too, because on a phone a 16px checkbox is the wrong target and
+ * "mark it done" is the only thing anyone wants to do to a task in a list.
+ */
+export function TaskRow({ task, index }: { task: Task; index?: number }) {
+  const { toggleTask, deleteTask, workspace, now } = useOS();
   const done = task.status === "done";
   const course = workspace.courses.find((c) => c.id === task.courseId);
-  const project = workspace.projects.find((p) => p.id === task.projectId);
-  const context = course?.name ?? project?.name;
 
   // Play the settle animation only on a real transition, never on mount.
   const [justChanged, setJustChanged] = useState(false);
@@ -57,9 +47,8 @@ export function TaskRow({
     <div
       style={index === undefined ? undefined : ({ "--i": index } as React.CSSProperties)}
       className={cn(
-        "group grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 px-4",
+        "group grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 px-4 py-3",
         "transition-colors duration-[var(--dur-fast)] ease-[var(--ease-out-soft)] hover:bg-muted/40",
-        dense ? "py-2.5" : "py-3",
         index !== undefined && "rise-fast",
         justChanged && "settle-once",
       )}
@@ -73,9 +62,8 @@ export function TaskRow({
 
       <button
         type="button"
-        onClick={() => onOpen?.(task)}
-        disabled={!onOpen}
-        className={cn("min-w-0 text-left", onOpen ? "cursor-pointer" : "cursor-default")}
+        onClick={() => void toggleTask(task.id)}
+        className="min-w-0 cursor-pointer text-left"
       >
         <span
           className={cn(
@@ -105,12 +93,12 @@ export function TaskRow({
             ·
           </span>
           <span>{formatDuration(task.estimateMin)}</span>
-          {context ? (
+          {course ? (
             <>
               <span aria-hidden className="opacity-40">
                 ·
               </span>
-              <span className="truncate">{context}</span>
+              <span className="truncate">{course.name}</span>
             </>
           ) : null}
           {/* Only genuinely external origins earn a tag; manual and demo do not. */}
@@ -143,33 +131,14 @@ export function TaskRow({
             <ExternalLink className="size-3.5" />
           </a>
         ) : null}
-        {showReorder ? (
-          <>
-            <button
-              type="button"
-              aria-label={`Move ${task.title} up`}
-              onClick={() => void moveTask(task.id, -1)}
-              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <ChevronUp className="size-3.5" />
-            </button>
-            <button
-              type="button"
-              aria-label={`Move ${task.title} down`}
-              onClick={() => void moveTask(task.id, 1)}
-              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <ChevronDown className="size-3.5" />
-            </button>
-          </>
-        ) : null}
-        <Link
-          to="/focus"
-          search={{ taskId: task.id }}
-          className="rounded-md px-2 py-1 text-[11.5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        <button
+          type="button"
+          aria-label={`Delete ${task.title}`}
+          onClick={() => void deleteTask(task.id)}
+          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-urgent-soft hover:text-urgent"
         >
-          Focus
-        </Link>
+          <Trash2 className="size-3.5" />
+        </button>
       </div>
     </div>
   );
