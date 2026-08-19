@@ -117,6 +117,22 @@ test.describe("primary journey", () => {
     expect(real).toEqual([]);
   });
 
+  /**
+   * Regression: both class pages rendered a confident empty state — "No classes
+   * yet, press Sync" and "Class not found" — during the second the workspace
+   * took to load. Both were false, and both were the first thing you saw on a
+   * cold load.
+   */
+  test("a cold load never claims there are no classes", async ({ page }) => {
+    await enterDemoMode(page);
+
+    const wrongly = page.getByText("No classes yet");
+    await page.goto("/classes");
+    // Checked immediately, before the workspace can arrive.
+    await expect(wrongly).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /English 9 H/ })).toBeVisible();
+  });
+
   test("navigation is three tabs and they all resolve", async ({ page }) => {
     await enterDemoMode(page);
     const nav = page.getByRole("navigation", { name: "Primary" }).first();

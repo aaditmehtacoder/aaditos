@@ -4,7 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { CaptureBar } from "@/components/os/capture-bar";
-import { EmptyState, Panel, PanelHeader, Pill } from "@/components/os/primitives";
+import { BlockSkeleton, EmptyState, Panel, PanelHeader, Pill } from "@/components/os/primitives";
 import { TaskRow } from "@/components/os/task-row";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -188,9 +188,22 @@ function NoteRow({ note, courseName }: { note: Note; courseName: string }) {
 
 function ClassPage() {
   const { courseId } = useParams({ from: "/classes/$courseId" });
-  const { workspace, now } = useOS();
+  const { workspace, now, status } = useOS();
 
   const course = workspace.courses.find((c) => c.id === courseId);
+
+  // Same reason as the classes list: "Class not found" is a claim, and it is
+  // false for the second before the workspace arrives.
+  if (status === "loading") {
+    return (
+      <div className="space-y-4">
+        <BlockSkeleton className="h-4 w-20" />
+        <BlockSkeleton className="h-8 w-56" />
+        <BlockSkeleton className="h-[84px]" />
+        <BlockSkeleton className="h-[180px]" />
+      </div>
+    );
+  }
 
   if (!course) {
     return (

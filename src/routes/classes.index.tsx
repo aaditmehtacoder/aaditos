@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { BookOpen, Lightbulb } from "lucide-react";
 
-import { EmptyState, Panel, Pill } from "@/components/os/primitives";
+import { BlockSkeleton, EmptyState, Panel, Pill } from "@/components/os/primitives";
 import { bellScheduleFor, formatMin, nextClassFor, schoolDayStatus } from "@/lib/core/schedule";
 import { dayDiff } from "@/lib/core/time";
 import { useOS } from "@/lib/store";
@@ -26,7 +26,7 @@ export const Route = createFileRoute("/classes/")({
  * what anyone did next.
  */
 function ClassesPage() {
-  const { workspace, now } = useOS();
+  const { workspace, now, status } = useOS();
   const courses = [...workspace.courses]
     .filter((c) => c.active)
     .sort((a, b) => (a.period ?? 99) - (b.period ?? 99));
@@ -63,7 +63,18 @@ function ClassesPage() {
         </p>
       </div>
 
-      {courses.length === 0 ? (
+      {/*
+        A skeleton while loading, not the empty state. "No classes yet — press
+        Sync" is a factual claim, and rendering it during every cold load told
+        the user their schedule was missing a second before it appeared.
+      */}
+      {status === "loading" ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <BlockSkeleton key={i} className="h-[104px]" />
+          ))}
+        </div>
+      ) : courses.length === 0 ? (
         <Panel>
           <EmptyState
             icon={BookOpen}
