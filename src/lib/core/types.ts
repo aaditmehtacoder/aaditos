@@ -1,10 +1,10 @@
 /**
  * AaditOS domain model.
  *
- * These types are the contract between the UI, the repository layer and the
- * server-side integration adapters. Every record that belongs to a person
- * carries `userId` so the same shapes work against Row-Level-Security-protected
- * Postgres tables without a rewrite.
+ * Four things exist: tasks, classes (with their assignments), events, and
+ * notes. Everything on screen is one of those. Every record carries `userId`
+ * so the same shapes work against Row-Level-Security-protected Postgres
+ * tables without a rewrite.
  */
 
 export type UUID = string;
@@ -14,36 +14,14 @@ export type ISODateTime = string;
 /** ISO-8601 calendar date (`YYYY-MM-DD`) in America/Los_Angeles. */
 export type ISODate = string;
 
-export const SOURCES = [
-  "manual",
-  "google_classroom",
-  "google_calendar",
-  "gmail",
-  "google_drive",
-  "github",
-  "vercel",
-  "spotify",
-  "wilcox",
-  "aeries",
-  "discord",
-  "linkedin",
-  "demo",
-] as const;
+export const SOURCES = ["manual", "google_classroom", "google_calendar", "wilcox", "demo"] as const;
 export type SourceId = (typeof SOURCES)[number];
 
 export const SOURCE_LABELS: Record<SourceId, string> = {
-  manual: "Manual",
+  manual: "Added by you",
   google_classroom: "Classroom",
   google_calendar: "Calendar",
-  gmail: "Gmail",
-  google_drive: "Drive",
-  github: "GitHub",
-  vercel: "Vercel",
-  spotify: "Spotify",
   wilcox: "Wilcox",
-  aeries: "Aeries",
-  discord: "Discord",
-  linkedin: "LinkedIn",
   demo: "Demo",
 };
 
@@ -69,7 +47,6 @@ export interface Task {
   description?: string | undefined;
   category: TaskCategory;
   courseId?: UUID | undefined;
-  projectId?: string | undefined;
   /** ISO instant the task is due, or undefined for someday/inbox items. */
   dueAt?: ISODateTime | undefined;
   /** True when `dueAt` carries no meaningful clock time. */
@@ -146,8 +123,7 @@ export type EventKind =
   | "district"
   | "counseling"
   | "athletics"
-  | "personal"
-  | "focus";
+  | "personal";
 
 export interface CalendarEvent {
   id: UUID;
@@ -168,158 +144,37 @@ export interface CalendarEvent {
   updatedAt: ISODateTime;
 }
 
-export type ProjectHealth = "on_track" | "attention" | "at_risk";
+/**
+ * A thought or an idea, attached to a class.
+ *
+ * This is the thing a planner normally has nowhere to put: "Robson said the
+ * essay thesis has to be arguable", or "what if I wrote the Financial Lit
+ * project about Origami Prep's pricing". Neither is a task and neither has a
+ * date, so a todo list either loses it or turns it into a fake deadline.
+ *
+ * A note becomes a task only when the user says so — `taskId` records that it
+ * did, so the same idea is never turned into two tasks.
+ */
+export type NoteKind = "thought" | "idea";
+export const NOTE_KINDS: NoteKind[] = ["thought", "idea"];
 
-export interface ProjectLink {
-  label: string;
-  url: string;
-}
-
-export interface ProjectActivity {
-  id: string;
-  at: ISODateTime;
-  text: string;
-  source: SourceId;
-  url?: string | undefined;
-}
-
-export interface ProjectMetric {
-  label: string;
-  value: string;
-  delta?: string | undefined;
-}
-
-export interface ProjectDocument {
-  name: string;
-  meta: string;
-  url?: string | undefined;
-}
-
-export interface Project {
-  id: string;
-  userId: UUID;
-  name: string;
-  kind: string;
-  objective: string;
-  progress: number;
-  health: ProjectHealth;
-  blockers: string[];
-  deadlineAt?: ISODateTime | undefined;
-  deadlineLabel?: string | undefined;
-  contact?: string | undefined;
-  githubRepo?: string | undefined;
-  vercelProject?: string | undefined;
-  links: ProjectLink[];
-  metrics: ProjectMetric[];
-  documents: ProjectDocument[];
-  activity: ProjectActivity[];
-  createdAt: ISODateTime;
-  updatedAt: ISODateTime;
-}
-
-export const OPPORTUNITY_STAGES = [
-  "discovered",
-  "interested",
-  "applied",
-  "follow_up",
-  "interview",
-  "accepted",
-  "closed",
-] as const;
-export type OpportunityStage = (typeof OPPORTUNITY_STAGES)[number];
-
-export const OPPORTUNITY_STAGE_LABELS: Record<OpportunityStage, string> = {
-  discovered: "Discovered",
-  interested: "Interested",
-  applied: "Applied",
-  follow_up: "Follow-up",
-  interview: "Interview",
-  accepted: "Accepted",
-  closed: "Closed",
+export const NOTE_KIND_LABELS: Record<NoteKind, string> = {
+  thought: "Thought",
+  idea: "Idea",
 };
 
-export const OPPORTUNITY_TYPES = [
-  "internship",
-  "hackathon",
-  "founder",
-  "sponsorship",
-  "application",
-  "event",
-] as const;
-export type OpportunityType = (typeof OPPORTUNITY_TYPES)[number];
-
-export const OPPORTUNITY_TYPE_LABELS: Record<OpportunityType, string> = {
-  internship: "Internship",
-  hackathon: "Hackathon",
-  founder: "Founder",
-  sponsorship: "Sponsorship",
-  application: "Application",
-  event: "Event",
-};
-
-export interface Opportunity {
+export interface Note {
   id: UUID;
   userId: UUID;
-  org: string;
-  title: string;
-  type: OpportunityType;
-  stage: OpportunityStage;
-  contact?: string | undefined;
-  deadlineAt?: ISODateTime | undefined;
-  lastInteractionAt?: ISODateTime | undefined;
-  lastInteractionNote?: string | undefined;
-  nextAction?: string | undefined;
-  notes?: string | undefined;
-  relatedEmail?: string | undefined;
-  relatedUrl?: string | undefined;
-  createdAt: ISODateTime;
-  updatedAt: ISODateTime;
-}
-
-export type FocusSessionStatus = "running" | "paused" | "completed" | "cancelled";
-
-export interface FocusSession {
-  id: UUID;
-  userId: UUID;
+  /** The class this belongs to. Undefined means it is not about a class. */
+  courseId?: UUID | undefined;
+  kind: NoteKind;
+  body: string;
+  /** Set once this note has been turned into a task, so it is only done once. */
   taskId?: UUID | undefined;
-  taskTitle: string;
-  category: TaskCategory;
-  plannedMin: number;
-  /** Accumulated elapsed seconds, excluding time spent paused. */
-  elapsedSec: number;
-  status: FocusSessionStatus;
-  startedAt: ISODateTime;
-  /** Set while `status === "running"`; the instant the current run leg began. */
-  resumedAt?: ISODateTime | undefined;
-  endedAt?: ISODateTime | undefined;
-  reflection?: string | undefined;
+  pinned: boolean;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
-}
-
-export type NotificationCategory = "urgent" | "school" | "projects" | "opportunities" | "system";
-
-export const NOTIFICATION_CATEGORIES: NotificationCategory[] = [
-  "urgent",
-  "school",
-  "projects",
-  "opportunities",
-  "system",
-];
-
-export interface AppNotification {
-  id: UUID;
-  userId: UUID;
-  category: NotificationCategory;
-  title: string;
-  detail?: string | undefined;
-  source: SourceId;
-  href?: string | undefined;
-  externalUrl?: string | undefined;
-  read: boolean;
-  createdAt: ISODateTime;
-  /** Stable key so repeated syncs never duplicate a notification. */
-  dedupeKey: string;
 }
 
 export type IntegrationStatus = "connected" | "disconnected" | "error" | "unavailable" | "demo";
@@ -351,14 +206,8 @@ export interface SyncRun {
 export interface UserPreferences {
   userId: UUID;
   theme: "light" | "dark" | "system";
-  focusGoalHours: number;
-  weeklyTaskGoal: number;
   workdayStart: string;
   workdayEnd: string;
-  mutedNotificationCategories: NotificationCategory[];
-  browserNotifications: boolean;
-  compassTone: "concise" | "coach" | "detailed";
-  compassAutoRunReadTools: boolean;
   reducedMotion: boolean;
   updatedAt: ISODateTime;
 }
@@ -382,10 +231,7 @@ export interface Workspace {
   courses: Course[];
   assignments: Assignment[];
   events: CalendarEvent[];
-  projects: Project[];
-  opportunities: Opportunity[];
-  focusSessions: FocusSession[];
-  notifications: AppNotification[];
+  notes: Note[];
   integrations: IntegrationRecord[];
   syncRuns: SyncRun[];
 }

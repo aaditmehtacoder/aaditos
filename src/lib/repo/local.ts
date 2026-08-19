@@ -9,15 +9,12 @@
 import { newId, stableId } from "@/lib/core/ids";
 import { nowISO } from "@/lib/core/time";
 import type {
-  AppNotification,
   Assignment,
   CalendarEvent,
   Course,
-  FocusSession,
   IntegrationRecord,
-  Opportunity,
+  Note,
   Profile,
-  Project,
   SyncRun,
   Task,
   UserPreferences,
@@ -26,7 +23,7 @@ import type {
 } from "@/lib/core/types";
 
 import { defaultPreferences, emptyWorkspace, seedWorkspace } from "./seed";
-import type { ImportResult, OpportunityInput, Repository, TaskInput } from "./types";
+import type { ImportResult, NoteInput, Repository, TaskInput } from "./types";
 
 const SCHEMA_VERSION = 1;
 const KEY_PREFIX = "aaditos:v1:workspace:";
@@ -114,8 +111,7 @@ export class LocalRepository implements Repository {
     } catch (error) {
       // Quota exceeded: drop the coldest history so the core record set survives.
       workspace.syncRuns = workspace.syncRuns.slice(-10);
-      workspace.focusSessions = workspace.focusSessions.slice(-120);
-      workspace.notifications = workspace.notifications.slice(-80);
+      workspace.events = workspace.events.slice(-400);
       try {
         window.localStorage.setItem(
           this.key(userId),
@@ -143,7 +139,6 @@ export class LocalRepository implements Repository {
       description: input.description,
       category: input.category,
       courseId: input.courseId,
-      projectId: input.projectId,
       dueAt: input.dueAt,
       dueAllDay: input.dueAllDay ?? false,
       startAt: input.startAt,
@@ -188,106 +183,38 @@ export class LocalRepository implements Repository {
     this.write(userId);
   }
 
-  async reorderTasks(userId: UUID, orderedIds: UUID[]): Promise<void> {
-    const ws = this.read(userId);
-    const rank = new Map(orderedIds.map((id, i) => [id, i]));
-    ws.tasks = ws.tasks.map((t) =>
-      rank.has(t.id) ? { ...t, position: rank.get(t.id)!, updatedAt: nowISO() } : t,
-    );
-    this.write(userId);
-  }
-
-  async saveFocusSession(userId: UUID, session: FocusSession): Promise<FocusSession> {
-    const ws = this.read(userId);
-    const index = ws.focusSessions.findIndex((s) => s.id === session.id);
-    const next = { ...session, userId, updatedAt: nowISO() };
-    if (index >= 0) ws.focusSessions[index] = next;
-    else ws.focusSessions = [next, ...ws.focusSessions];
-    this.write(userId);
-    return structuredCopy(next);
-  }
-
-  async createOpportunity(userId: UUID, input: OpportunityInput): Promise<Opportunity> {
+  async createNote(userId: UUID, input: NoteInput): Promise<Note> {
     const ws = this.read(userId);
     const now = nowISO();
-    const record: Opportunity = {
+    const note: Note = {
       id: newId(),
       userId,
-      org: input.org.trim(),
-      title: input.title.trim(),
-      type: input.type,
-      stage: input.stage ?? "discovered",
-      contact: input.contact,
-      deadlineAt: input.deadlineAt,
-      nextAction: input.nextAction,
-      notes: input.notes,
-      relatedEmail: input.relatedEmail,
-      relatedUrl: input.relatedUrl,
+      courseId: input.courseId,
+      kind: input.kind ?? "thought",
+      body: input.body.trim(),
+      taskId: undefined,
+      pinned: false,
       createdAt: now,
       updatedAt: now,
     };
-    ws.opportunities = [record, ...ws.opportunities];
+    ws.notes = [note, ...ws.notes];
     this.write(userId);
-    return structuredCopy(record);
+    return structuredCopy(note);
   }
 
-  async updateOpportunity(
-    userId: UUID,
-    id: UUID,
-    patch: Partial<Opportunity>,
-  ): Promise<Opportunity> {
+  async updateNote(userId: UUID, id: UUID, patch: Partial<Note>): Promise<Note> {
     const ws = this.read(userId);
-    const index = ws.opportunities.findIndex((o) => o.id === id);
-    if (index < 0) throw new Error(`Opportunity not found: ${id}`);
-    const next = { ...ws.opportunities[index]!, ...patch, id, userId, updatedAt: nowISO() };
-    ws.opportunities[index] = next;
+    const index = ws.notes.findIndex((n) => n.id === id);
+    if (index < 0) throw new Error(`Note not found: ${id}`);
+    const next: Note = { ...ws.notes[index]!, ...patch, id, userId, updatedAt: nowISO() };
+    ws.notes[index] = next;
     this.write(userId);
     return structuredCopy(next);
   }
 
-  async deleteOpportunity(userId: UUID, id: UUID): Promise<void> {
+  async deleteNote(userId: UUID, id: UUID): Promise<void> {
     const ws = this.read(userId);
-    ws.opportunities = ws.opportunities.filter((o) => o.id !== id);
-    this.write(userId);
-  }
-
-  async upsertNotifications(userId: UUID, items: AppNotification[]): Promise<ImportResult> {
-    const ws = this.read(userId);
-    const byKey = new Map(ws.notifications.map((n) => [n.dedupeKey, n]));
-    let imported = 0;
-    let skipped = 0;
-    for (const item of items) {
-      if (byKey.has(item.dedupeKey)) {
-        skipped += 1;
-        continue;
-      }
-      byKey.set(item.dedupeKey, { ...item, userId });
-      imported += 1;
-    }
-    ws.notifications = Array.from(byKey.values()).sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
-    this.write(userId);
-    return { imported, updated: 0, skipped };
-  }
-
-  async updateNotification(
-    userId: UUID,
-    id: UUID,
-    patch: Partial<AppNotification>,
-  ): Promise<AppNotification> {
-    const ws = this.read(userId);
-    const index = ws.notifications.findIndex((n) => n.id === id);
-    if (index < 0) throw new Error(`Notification not found: ${id}`);
-    const next = { ...ws.notifications[index]!, ...patch, id, userId };
-    ws.notifications[index] = next;
-    this.write(userId);
-    return structuredCopy(next);
-  }
-
-  async markAllNotificationsRead(userId: UUID): Promise<void> {
-    const ws = this.read(userId);
-    ws.notifications = ws.notifications.map((n) => ({ ...n, read: true }));
+    ws.notes = ws.notes.filter((n) => n.id !== id);
     this.write(userId);
   }
 
@@ -325,14 +252,6 @@ export class LocalRepository implements Repository {
     return { imported, updated: items.length - imported, skipped: 0 };
   }
 
-  async upsertProjects(userId: UUID, items: Project[]): Promise<ImportResult> {
-    const ws = this.read(userId);
-    const result = upsertBy(ws.projects, items, (p) => p.id);
-    ws.projects = result.list;
-    this.write(userId);
-    return result.stats;
-  }
-
   async upsertIntegration(userId: UUID, record: IntegrationRecord): Promise<IntegrationRecord> {
     const ws = this.read(userId);
     const index = ws.integrations.findIndex((i) => i.id === record.id);
@@ -358,13 +277,6 @@ export class LocalRepository implements Repository {
 
   async exportWorkspace(userId: UUID): Promise<Workspace> {
     return structuredCopy(this.read(userId));
-  }
-
-  async resetToDemoData(userId: UUID): Promise<Workspace> {
-    const workspace = seedWorkspace(userId, this.profileFor(userId));
-    this.cache.set(userId, workspace);
-    this.write(userId);
-    return structuredCopy(workspace);
   }
 
   async deleteAllData(userId: UUID): Promise<void> {

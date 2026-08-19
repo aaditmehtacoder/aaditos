@@ -19,7 +19,6 @@ export const TaskDraftSchema = z.object({
   description: z.string().max(2000).optional(),
   category: z.enum(["school", "work", "personal"]),
   courseName: z.string().max(120).optional(),
-  projectName: z.string().max(120).optional(),
   dueAt: z.string().optional(),
   dueAllDay: z.boolean(),
   priority: z.enum(["urgent", "high", "normal", "low"]),
@@ -33,7 +32,6 @@ export type TaskDraft = z.infer<typeof TaskDraftSchema>;
 export interface ParseContext {
   now?: Date;
   courses?: string[];
-  projects?: string[];
   defaultEstimateMin?: number;
 }
 
@@ -108,12 +106,11 @@ export function parseTaskInput(input: string, ctx: ParseContext = {}): TaskDraft
   if (priority) spans.push(priority.span);
 
   const course = matchNamed(text, ctx.courses ?? []);
-  const project = course ? null : matchNamed(text, ctx.projects ?? []);
 
   const dueAllDay = Boolean(date) && !time;
   const dueAt = buildDueAt(now, date?.value ?? null, time?.value ?? null);
 
-  const category: TaskCategory = course ? "school" : project ? "work" : inferCategory(lower);
+  const category: TaskCategory = course ? "school" : inferCategory(lower);
 
   const title = cleanTitle(text, spans) || text || "Untitled task";
 
@@ -126,7 +123,6 @@ export function parseTaskInput(input: string, ctx: ParseContext = {}): TaskDraft
   };
   if (dueAt) draft.dueAt = dueAt;
   if (course) draft.courseName = course;
-  if (project) draft.projectName = project;
   return draft;
 }
 

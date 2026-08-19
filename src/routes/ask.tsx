@@ -1,7 +1,6 @@
-import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { AlertTriangle, KeyRound, Loader2, Send, Sparkles, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { z } from "zod";
 
 import { CompassAnswer } from "@/components/os/compass-answer";
 import { ProposalCard, ToolResultBlock } from "@/components/os/compass-blocks";
@@ -11,36 +10,29 @@ import { Textarea } from "@/components/ui/textarea";
 import { useProviderConfig } from "@/lib/integrations/use-integrations";
 import { TOOL_LABEL, useCompassChat } from "@/lib/compass/use-compass-chat";
 
-const searchSchema = z.object({ q: z.string().optional() });
-
-export const Route = createFileRoute("/compass")({
-  validateSearch: searchSchema,
+export const Route = createFileRoute("/ask")({
   head: () => ({
     meta: [
-      { title: "Compass · AaditOS" },
-      { name: "description", content: "Ask Compass to plan, summarize and prepare your day." },
+      { title: "Ask · AaditOS" },
+      { name: "description", content: "Ask about your day, your classes and what to do next." },
     ],
   }),
-  component: CompassPage,
+  component: AskPage,
 });
 
 const SUGGESTIONS = [
-  "Plan my afternoon",
+  "What should I do right now?",
   "What is due this week?",
-  "What should I do for the next 45 minutes?",
-  "Summarize what I missed",
-  "Find scheduling conflicts",
-  "Prepare me for tomorrow",
-  "Why is the Origami Prep project at risk?",
+  "Plan my afternoon",
+  "What did I write about English?",
+  "Am I double-booked this week?",
 ];
 
-function CompassPage() {
-  const search = useSearch({ from: "/compass" });
+function AskPage() {
   const config = useProviderConfig();
   const { turns, busy, send, stop } = useCompassChat();
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
-  const seeded = useRef(false);
 
   const configured = config.data?.openai ?? false;
 
@@ -52,26 +44,20 @@ function CompassPage() {
   };
 
   useEffect(() => {
-    if (seeded.current || !search.q) return;
-    seeded.current = true;
-    setInput(search.q);
-  }, [search.q]);
-
-  useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [turns]);
 
   return (
-    // dvh: this is the one page that is a composer, so it is the one page the
-    // Chromebook's on-screen keyboard is guaranteed to shrink.
-    // Measured, not guessed: top bar 53 + main's 20/20 padding = 93, plus the
-    // 52px bottom nav below lg.
-    <div className="mx-auto flex h-[calc(100dvh-145px)] max-w-[900px] flex-col lg:h-[calc(100dvh-93px)]">
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4 pb-4">
+    // dvh: this is the one page that is a composer, so it is the one page a
+    // Chromebook's on-screen keyboard is guaranteed to shrink. Measured, not
+    // guessed: top bar 53 + main's 20/20 padding = 93, plus the 52px bottom nav
+    // below the sm breakpoint.
+    <div className="flex h-[calc(100dvh-145px)] flex-col sm:h-[calc(100dvh-93px)]">
+      <div className="flex items-start justify-between gap-4 pb-4">
         <div className="min-w-0">
-          <h1 className="display text-[23px]">Compass</h1>
+          <h1 className="text-[22px] font-semibold tracking-tight">Ask</h1>
           <p className="mt-1 text-[13px] text-muted-foreground">
-            Reads your real tasks, assignments and calendar. Proposes — never saves on its own.
+            Reads your real tasks, classes, calendar and notes before it answers.
           </p>
         </div>
         {config.isLoading ? null : configured ? (
@@ -85,31 +71,16 @@ function CompassPage() {
 
       {!config.isLoading && !configured ? (
         <Panel className="mb-4">
-          <PanelHeader title="Compass needs an OpenAI key" />
+          <PanelHeader title="This needs an OpenAI key" />
           <div className="px-4 py-4">
             <p className="flex items-start gap-2 text-[12.5px] text-muted-foreground">
               <KeyRound className="mt-0.5 size-3.5 shrink-0" aria-hidden />
               <span>
                 Set <code className="rounded bg-secondary px-1">OPENAI_API_KEY</code> on the server
-                (and optionally <code className="rounded bg-secondary px-1">OPENAI_MODEL</code>) to
-                turn Compass on. Everything else in AaditOS works without it — no fake answers are
-                generated in the meantime.
+                to turn this on. Everything else works without it, and nothing is faked in the
+                meantime.
               </span>
             </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button size="sm" variant="outline" className="h-8 text-[12.5px]" asChild>
-                <Link to="/integrations">Integration setup</Link>
-              </Button>
-              <Button size="sm" variant="ghost" className="h-8 text-[12.5px]" asChild>
-                <a
-                  href="https://platform.openai.com/api-keys"
-                  target="_blank"
-                  rel="noreferrer noopener"
-                >
-                  Get an API key
-                </a>
-              </Button>
-            </div>
           </div>
         </Panel>
       ) : null}
@@ -119,8 +90,8 @@ function CompassPage() {
           <Panel>
             <EmptyState
               icon={Sparkles}
-              title="Ask Compass anything about your day"
-              description="Compass calls typed, read-only tools over your workspace before it answers, and shows the numbers it used."
+              title="Ask anything about your day"
+              description="It calls typed, read-only tools over your own workspace first, and shows the numbers it used."
             />
             <div className="border-t border-border p-3">
               <p className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground">Try</p>
@@ -225,11 +196,11 @@ function CompassPage() {
         }}
       >
         <div className="flex items-end gap-2">
-          <label htmlFor="compass-input" className="sr-only">
-            Ask Compass
+          <label htmlFor="ask-input" className="sr-only">
+            Ask a question
           </label>
           <Textarea
-            id="compass-input"
+            id="ask-input"
             rows={1}
             value={input}
             disabled={!configured}
@@ -240,11 +211,7 @@ function CompassPage() {
                 submit();
               }
             }}
-            placeholder={
-              configured
-                ? "Ask Compass… (Enter to send, Shift+Enter for a new line)"
-                : "Compass is not configured"
-            }
+            placeholder={configured ? "Ask anything…" : "Not configured"}
             className="max-h-32 min-h-[38px] resize-none text-[13px]"
           />
           {busy ? (
@@ -264,14 +231,14 @@ function CompassPage() {
               size="icon"
               className="size-9 shrink-0"
               disabled={!configured || !input.trim()}
-              aria-label="Send to Compass"
+              aria-label="Send"
             >
               <Send className="size-4" />
             </Button>
           )}
         </div>
         <p className="mt-1.5 text-[11px] text-muted-foreground">
-          Compass sends your question and a summary of your workspace to OpenAI with{" "}
+          Your question and a summary of your workspace go to OpenAI with{" "}
           <code className="rounded bg-secondary px-1">store: false</code>. It cannot email, message,
           delete or spend anything.
         </p>

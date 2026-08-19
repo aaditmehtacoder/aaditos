@@ -1,3 +1,10 @@
+-- SUPERSEDED. Web push was removed; nothing reads or writes this table.
+--
+-- The file stays because migrations are an append-only log: this one has
+-- already been applied to the live project, and deleting it would desync the
+-- next `supabase db push`. Dropping the table itself is a deliberate, separate
+-- migration to write if the empty table is ever worth the trouble.
+--
 -- Web push subscriptions.
 --
 -- One row per device per account: the same user signed in on a Chromebook and a

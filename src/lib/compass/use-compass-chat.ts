@@ -25,12 +25,9 @@ export const TOOL_LABEL: Record<CompassToolName, string> = {
   get_task: "Opening a task",
   list_assignments: "Reading assignments",
   list_events: "Reading your calendar",
-  list_projects: "Reading projects",
-  get_project_status: "Checking project status",
-  list_opportunities: "Reading opportunities",
+  list_notes: "Reading your notes",
   create_daily_plan: "Building a plan",
   find_schedule_conflicts: "Checking for conflicts",
-  get_focus_summary: "Summarizing focus time",
   propose_task: "Drafting a task",
   update_task: "Drafting a change",
 };
@@ -124,7 +121,6 @@ export function useCompassChat(): CompassChat {
       await streamCompass({
         messages: history,
         snapshot,
-        tone: workspace.preferences.compassTone,
         signal: controller.signal,
         onEvent: (event: CompassEvent) => {
           switch (event.type) {
@@ -167,7 +163,7 @@ export function useCompassChat(): CompassChat {
       setBusy(false);
       abortRef.current = null;
     },
-    [busy, turns, snapshot, workspace.preferences.compassTone],
+    [busy, turns, snapshot],
   );
 
   return { turns, busy, send, stop, reset };

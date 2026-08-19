@@ -1,9 +1,10 @@
 /**
- * Builds the compact workspace view that Compass reasons over.
+ * Builds the compact workspace view the assistant reasons over.
  *
- * Only what is needed to answer "what is happening today / what matters / what
- * next" is included; free-text notes and anything not needed for planning stay
- * on the device.
+ * Tasks, assignments, events and notes — everything that carries either a
+ * deadline or an intention. Notes are included on purpose: without them the
+ * assistant can only reason about *when* things are due, never about what the
+ * user actually understood, wanted, or got stuck on.
  */
 
 import { availableFocusMinutes } from "@/lib/core/priority";
@@ -21,7 +22,6 @@ export function buildSnapshot(
   opts: { isDemo: boolean },
 ): CompassSnapshot {
   const courseName = new Map(workspace.courses.map((c) => [c.id, c.name]));
-  const projectName = new Map(workspace.projects.map((p) => [p.id, p.name]));
 
   const horizonStart = startOfDay(now).getTime();
   const horizonEnd = addDays(startOfDay(now), HORIZON_DAYS).getTime();
@@ -47,16 +47,6 @@ export function buildSnapshot(
     dayStartMin: startH * 60 + startM,
     dayEndMin: endH * 60 + endM,
   });
-
-  const weekAgo = now.getTime() - 7 * 86_400_000;
-  const recentSessions = workspace.focusSessions.filter(
-    (s) => s.status === "completed" && new Date(s.startedAt).getTime() >= weekAgo,
-  );
-  const byCategory: Record<string, number> = {};
-  for (const session of recentSessions) {
-    byCategory[session.category] =
-      (byCategory[session.category] ?? 0) + Math.round(session.elapsedSec / 60);
-  }
 
   return {
     now: now.toISOString(),
@@ -88,7 +78,6 @@ export function buildSnapshot(
         dueAt: t.dueAt,
         dueAllDay: t.dueAllDay,
         course: t.courseId ? courseName.get(t.courseId) : undefined,
-        project: t.projectId ? projectName.get(t.projectId) : undefined,
         subtasksOpen: t.subtasks.filter((s) => !s.done).length,
       })),
     assignments: workspace.assignments.slice(0, 60).map((a) => ({
@@ -118,36 +107,13 @@ export function buildSnapshot(
         source: e.source,
         location: e.location,
       })),
-    projects: workspace.projects.map((p) => ({
-      id: p.id,
-      name: p.name,
-      objective: p.objective,
-      health: p.health,
-      progress: p.progress,
-      blockers: p.blockers,
-      deadlineAt: p.deadlineAt,
-      openTasks: workspace.tasks.filter(
-        (t) => t.projectId === p.id && t.status !== "done" && t.status !== "archived",
-      ).length,
-      recentActivity: p.activity.slice(0, 4).map((a) => a.text),
+    notes: workspace.notes.slice(0, 60).map((n) => ({
+      id: n.id,
+      course: n.courseId ? courseName.get(n.courseId) : undefined,
+      kind: n.kind,
+      body: n.body,
+      createdAt: n.createdAt,
+      madeIntoTask: Boolean(n.taskId),
     })),
-    opportunities: workspace.opportunities.map((o) => ({
-      id: o.id,
-      org: o.org,
-      title: o.title,
-      type: o.type,
-      stage: o.stage,
-      deadlineAt: o.deadlineAt,
-      nextAction: o.nextAction,
-    })),
-    focus: {
-      last7DaysMin: recentSessions.reduce((sum, s) => sum + Math.round(s.elapsedSec / 60), 0),
-      byCategory,
-      sessionCount: recentSessions.length,
-      longestSessionMin: recentSessions.reduce(
-        (max, s) => Math.max(max, Math.round(s.elapsedSec / 60)),
-        0,
-      ),
-    },
   };
 }

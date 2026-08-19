@@ -17,7 +17,7 @@ import {
   type BellPeriod,
   type SchoolDayStatus,
 } from "@/lib/core/schedule";
-import { addDays, dateKey, dayDiff, endOfWeek, minutesIntoDay, startOfWeek } from "@/lib/core/time";
+import { addDays, dateKey, dayDiff, minutesIntoDay, startOfDay } from "@/lib/core/time";
 import type { CalendarEvent, Course, Task } from "@/lib/core/types";
 import { useOS } from "@/lib/store";
 
@@ -35,13 +35,7 @@ export interface TodayModel {
   upcoming: Task[];
   availableMin: number;
   nextWindowMin: number;
-  weekly: {
-    plannedTasks: number;
-    completedTasks: number;
-    focusMin: number;
-    focusGoalMin: number;
-    taskGoal: number;
-  };
+  doneToday: number;
 }
 
 export function useToday(): TodayModel {
@@ -88,26 +82,13 @@ export function useToday(): TodayModel {
       .filter((t) => t.dueAt && dayDiff(now, t.dueAt) > 0 && dayDiff(now, t.dueAt) <= 7)
       .sort((a, b) => new Date(a.dueAt!).getTime() - new Date(b.dueAt!).getTime());
 
-    const weekStart = startOfWeek(now).getTime();
-    const weekEnd = endOfWeek(now).getTime();
-    const completedThisWeek = workspace.tasks.filter(
+    // "Three done today" is the only progress number that means anything on a
+    // Tuesday afternoon. Weekly goals were a chart nobody was hitting.
+    const todayStart = startOfDay(now).getTime();
+    const doneToday = workspace.tasks.filter(
       (t) =>
-        t.status === "done" &&
-        t.completedAt &&
-        new Date(t.completedAt).getTime() >= weekStart &&
-        new Date(t.completedAt).getTime() <= weekEnd,
+        t.status === "done" && t.completedAt && new Date(t.completedAt).getTime() >= todayStart,
     ).length;
-    const plannedThisWeek =
-      completedThisWeek +
-      open.filter((t) => !t.dueAt || new Date(t.dueAt).getTime() <= weekEnd).length;
-    const focusMin = workspace.focusSessions
-      .filter(
-        (s) =>
-          s.status === "completed" &&
-          new Date(s.startedAt).getTime() >= weekStart &&
-          new Date(s.startedAt).getTime() <= weekEnd,
-      )
-      .reduce((sum, s) => sum + Math.round(s.elapsedSec / 60), 0);
 
     return {
       now,
@@ -122,13 +103,7 @@ export function useToday(): TodayModel {
       upcoming,
       availableMin: windows.totalMin,
       nextWindowMin: windows.nextWindowMin,
-      weekly: {
-        plannedTasks: plannedThisWeek,
-        completedTasks: completedThisWeek,
-        focusMin,
-        focusGoalMin: workspace.preferences.focusGoalHours * 60,
-        taskGoal: workspace.preferences.weeklyTaskGoal,
-      },
+      doneToday,
     };
   }, [workspace, now]);
 }

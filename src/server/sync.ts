@@ -1,21 +1,18 @@
 /**
  * Provider synchronization.
  *
- * Every provider runs independently and its failure is captured, not thrown —
- * a dead Spotify token must never stop the Wilcox calendar or GitHub from
- * syncing. Each provider reports a `SyncRunResult` the UI can display verbatim.
+ * Three providers, and every one runs independently with its failure captured
+ * rather than thrown — a lapsed Google consent must never stop the Wilcox
+ * calendar or the weather from syncing. Each reports a `SyncRunResult` the UI
+ * can display verbatim.
  */
 
 import { dedupeEvents, normalizeEvent } from "@/lib/core/normalize";
 import { SYNCABLE } from "@/lib/integrations/contracts";
 import type { SyncPayload, SyncProvider, SyncRunResult } from "@/lib/integrations/contracts";
 
-import { fetchAeries } from "./providers/aeries";
 import { fetchGoogle } from "./providers/google";
 import { readGoogleSession } from "./google-session";
-import { fetchGithub } from "./providers/github";
-import { fetchSpotify } from "./providers/spotify";
-import { fetchVercel } from "./providers/vercel";
 import { fetchWeather } from "./providers/weather";
 import { WILCOX_CALENDARS, fetchWilcoxEvents } from "./providers/wilcox";
 
@@ -25,7 +22,6 @@ export type { SyncPayload, SyncProvider, SyncRunResult };
 export interface SyncOptions {
   providers: SyncProvider[];
   userId: string;
-  githubRepos: string[];
 }
 
 /** Retry a transient failure once with a short backoff. */
@@ -103,128 +99,6 @@ export async function runSync(opts: SyncOptions): Promise<SyncPayload> {
             ? `${result.events.length} events, ${result.courses.length} courses, ${result.assignments.length} assignments` +
               (result.error ? ` · ${result.error}` : "")
             : (result.error ?? "Google request failed"),
-          needsCredentials: false,
-        };
-      }),
-    );
-  }
-
-  if (wanted.has("aeries")) {
-    tasks.push(
-      run("aeries", payload, async () => {
-        const result = await fetchAeries(opts.userId);
-        payload.aeries = result;
-        if (!result.configured) {
-          return {
-            ok: false,
-            imported: 0,
-            updated: 0,
-            skipped: 0,
-            message:
-              "Aeries needs a district-issued API certificate (AERIES_BASE_URL, AERIES_CERT, AERIES_STUDENT_ID)",
-            needsCredentials: true,
-          };
-        }
-        return {
-          ok: result.ok,
-          imported: result.courses.length + result.assignments.length,
-          updated: 0,
-          skipped: 0,
-          message: result.ok
-            ? `${result.courses.length} classes, ${result.assignments.length} assignments, ${result.grades.length} grades` +
-              (result.error ? ` · ${result.error}` : "")
-            : (result.error ?? "Aeries request failed"),
-          needsCredentials: false,
-        };
-      }),
-    );
-  }
-
-  if (wanted.has("github")) {
-    tasks.push(
-      run("github", payload, async () => {
-        const result = await fetchGithub(opts.githubRepos);
-        payload.github = result;
-        if (!result.configured) {
-          return {
-            ok: false,
-            imported: 0,
-            updated: 0,
-            skipped: 0,
-            message: "GITHUB_TOKEN is not set on the server",
-            needsCredentials: true,
-          };
-        }
-        const failed = result.repos.filter((r) => r.error).length;
-        return {
-          ok: result.ok,
-          imported: result.repos.length - failed,
-          updated: 0,
-          skipped: failed,
-          message: result.ok
-            ? `${result.repos.length - failed} repositories read` +
-              (failed ? ` · ${failed} failed` : "")
-            : (result.error ?? "GitHub request failed"),
-          needsCredentials: false,
-        };
-      }),
-    );
-  }
-
-  if (wanted.has("vercel")) {
-    tasks.push(
-      run("vercel", payload, async () => {
-        const result = await fetchVercel();
-        payload.vercel = result;
-        if (!result.configured) {
-          return {
-            ok: false,
-            imported: 0,
-            updated: 0,
-            skipped: 0,
-            message: "VERCEL_TOKEN is not set on the server",
-            needsCredentials: true,
-          };
-        }
-        return {
-          ok: result.ok,
-          imported: result.deployments.length,
-          updated: 0,
-          skipped: 0,
-          message: result.ok
-            ? `${result.deployments.length} deployments across ${result.projects.length} projects`
-            : (result.error ?? "Vercel request failed"),
-          needsCredentials: false,
-        };
-      }),
-    );
-  }
-
-  if (wanted.has("spotify")) {
-    tasks.push(
-      run("spotify", payload, async () => {
-        const result = await fetchSpotify();
-        payload.spotify = result;
-        if (!result.configured) {
-          return {
-            ok: false,
-            imported: 0,
-            updated: 0,
-            skipped: 0,
-            message: "Spotify credentials are not set on the server",
-            needsCredentials: true,
-          };
-        }
-        return {
-          ok: result.ok,
-          imported: result.recent.length,
-          updated: 0,
-          skipped: 0,
-          message: result.ok
-            ? result.nowPlaying
-              ? `Now playing: ${result.nowPlaying.title}`
-              : `${result.recent.length} recent tracks · nothing playing`
-            : (result.error ?? "Spotify request failed"),
           needsCredentials: false,
         };
       }),

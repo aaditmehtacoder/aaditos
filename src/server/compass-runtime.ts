@@ -38,38 +38,40 @@ function client(): OpenAI {
   return new OpenAI({ apiKey, maxRetries: 2, timeout: 60_000 });
 }
 
-const TONE_GUIDANCE: Record<string, string> = {
-  concise: "Answer in as few words as possible. Prefer lists over paragraphs. No preamble.",
-  coach: "Be warm and encouraging, but still short. One motivating sentence maximum.",
-  detailed: "Explain your reasoning briefly after the answer, in at most three sentences.",
-};
-
-export function systemInstructions(snapshot: CompassSnapshot, tone: string): string {
+export function systemInstructions(snapshot: CompassSnapshot): string {
   return [
-    "You are Compass, the assistant inside AaditOS — a private personal operating system.",
-    `The user is ${snapshot.profile.name}, a 14-year-old ninth grader at ${snapshot.profile.school} in ${snapshot.profile.city}.`,
+    "You are the assistant inside AaditOS, a private planner belonging to one person.",
+    `That person is ${snapshot.profile.name}, a 14-year-old ninth grader at ${snapshot.profile.school} in ${snapshot.profile.city}.`,
     "",
     "Safety (the user is a minor):",
     "- Keep everything age-appropriate for a 14-year-old. No sexual, violent, self-harm, extremist, gambling, alcohol/drug, or otherwise adult content.",
-    "- Never give medical, legal, or financial advice. Suggest talking to a parent, teacher, or counsellor instead.",
-    "- If a message suggests self-harm, abuse, or a crisis, stop planning, respond with care, and point to a trusted adult and the 988 Suicide & Crisis Lifeline (call or text 988 in the US).",
-    "- Do not help with academic dishonesty. Help the user understand, plan, outline and revise their own work; never write a graded assignment for them to submit as their own.",
+    "- Never give medical, legal, or financial advice. Point to a parent, teacher, or counsellor instead.",
+    "- If a message suggests self-harm, abuse, or a crisis, stop planning, respond with care, and name a trusted adult and the 988 Suicide & Crisis Lifeline (call or text 988 in the US).",
+    "- Do not do graded work for them. Help them understand, plan, outline and revise their own work; never write something they would hand in as theirs.",
     "- Never ask for or repeat passwords, API keys, addresses, or payment details.",
     "",
-    "How to work:",
-    "- Call the read tools to get real data before answering. Never invent tasks, dates, grades, or events.",
-    "- `propose_task` and `update_task` do NOT save anything. They create a proposal the user must confirm. Say so plainly.",
-    "- You cannot send messages, email anyone, delete anything, or act outside AaditOS.",
-    `- Today is ${snapshot.now} (${snapshot.timezone}). ${snapshot.schoolDay.reason}.`,
-    snapshot.isDemo
-      ? "- This workspace is running on DEMO data. Mention that when the answer depends on it."
-      : "",
+    "Read before you answer:",
+    "- Call the read tools first. Never invent a task, a date, a grade, or an event; if a tool returns nothing, say so rather than filling the gap.",
+    "- `list_notes` is the one most answers are missing. Notes are what the user wrote for themselves — what a teacher actually asked for, what they got stuck on, an idea they had. A deadline says a paper is due Friday; a note says the thesis has to be arguable and theirs currently is not. Read them before advising on a class, an assignment, or what to work on.",
+    "- State the numbers you used, so the answer can be checked instead of trusted.",
     "",
-    "Style:",
-    TONE_GUIDANCE[tone] ?? TONE_GUIDANCE["concise"]!,
-    "- Use the user's own task and course names exactly.",
-    "- Give times in the user's local timezone, e.g. '4:00 PM'.",
-    "- When you use a tool result, state the number you used so the answer is checkable.",
+    "Answer like someone who knows the situation:",
+    "- Lead with the answer. No preamble, no restating the question, no 'Great question'.",
+    "- Be specific to their actual work. Use their exact task and class names. 'Start the Financial Lit packet — it is 30 minutes and you have 45' beats 'prioritize by deadline'.",
+    "- Short. A few sentences, or a list when there are genuinely several things. Never pad.",
+    "- Say the hard thing when it is true. If five assignments are missing, lead with that instead of building an encouraging plan around it.",
+    "- Give times in their local timezone, e.g. '4:00 PM'. Say 'tomorrow' and 'Friday', not ISO timestamps.",
+    "- When something is genuinely fine, say so in one line and stop. Do not manufacture work.",
+    "",
+    "What you can and cannot do:",
+    "- `propose_task` and `update_task` save nothing. They put a card in front of the user to confirm. Say plainly that nothing is saved yet.",
+    "- You cannot send messages, email anyone, delete anything, or act outside this app.",
+    `- Now is ${snapshot.now} (${snapshot.timezone}). ${snapshot.schoolDay.reason}.`,
+    snapshot.schoolDay.nextClass ? `- Next class: ${snapshot.schoolDay.nextClass}.` : "",
+    `- Their classes are: ${snapshot.courses.join(", ") || "not synced yet"}.`,
+    snapshot.isDemo
+      ? "- This workspace is running on DEMO data. Say so whenever the answer depends on it."
+      : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -87,7 +89,6 @@ type InputItem = Record<string, unknown>;
 export interface RunOptions {
   messages: CompassMessage[];
   snapshot: CompassSnapshot;
-  tone: string;
   clientId: string;
   signal?: AbortSignal | undefined;
 }
@@ -114,7 +115,7 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
   }
 
   const safetyIdentifier = await hashIdentifier(opts.clientId, serverEnv.safetyIdentifierSalt);
-  const instructions = systemInstructions(opts.snapshot, opts.tone);
+  const instructions = systemInstructions(opts.snapshot);
 
   const input: InputItem[] = opts.messages.slice(-12).map((m) => ({
     role: m.role,
@@ -291,19 +292,51 @@ function toErrorEvent(error: unknown): CompassEvent {
   };
 }
 
-// ---- structured task proposal (non-streaming) ----------------------------
+// ---- capture: any text in, filed items out ------------------------------
 
-export interface StructuredTaskResult {
+/**
+ * One box for everything.
+ *
+ * The reason a todo list is hard to keep is that most of what you need to
+ * remember does not arrive as a todo. It arrives as a sentence — "fin lit
+ * packet friday", a club email with four dates buried in it, or "Robson wants
+ * the thesis arguable", which is not a task at all and never will be. A box
+ * that only accepts tasks makes you do the sorting, so you stop using it.
+ *
+ * This does the sorting instead, and returns three kinds of thing:
+ *
+ *   - `task`  something to finish, with a deadline it can work out
+ *   - `event` something that happens at a time, with a place
+ *   - `note`  a thought or an idea about a class, which has no date and must
+ *             not be given a fake one
+ *
+ * Two rules carry most of the accuracy. Relative wording ("this Thursday") is
+ * resolved against when the text was *written*, not when it is pasted — a
+ * week-old email says something different from a fresh one. And every item
+ * quotes the words it came from in `evidence`, so a wrong date is traceable to
+ * the line that produced it rather than being unexplainable.
+ */
+export interface CaptureResult {
   ok: boolean;
-  draft?: unknown;
+  items?: unknown[];
+  note?: string;
   code?: string;
   message?: string;
 }
 
-export async function proposeTaskStructured(
+export async function captureItems(
   text: string,
-  ctx: { courses: string[]; projects: string[]; now: string; timezone: string; clientId: string },
-): Promise<StructuredTaskResult> {
+  ctx: {
+    now: string;
+    timezone: string;
+    courses: string[];
+    /** "Class — Teacher" pairs, so a teacher's name resolves to their class. */
+    teachers?: string[] | undefined;
+    clientId: string;
+    /** When the text was written, if known — an email's Received date. */
+    writtenAt?: string | undefined;
+  },
+): Promise<CaptureResult> {
   let openai: OpenAI;
   try {
     openai = client();
@@ -311,7 +344,7 @@ export async function proposeTaskStructured(
     return {
       ok: false,
       code: "missing_key",
-      message: "Compass is not configured. Add OPENAI_API_KEY on the server to enable this.",
+      message: "The assistant is not configured. Add OPENAI_API_KEY on the server.",
     };
   }
 
@@ -322,145 +355,60 @@ export async function proposeTaskStructured(
       model: serverEnv.openaiModel,
       store: false,
       safety_identifier: safetyIdentifier,
-      max_output_tokens: 600,
+      max_output_tokens: Math.min(2400, serverEnv.openaiMaxOutputTokens * 2),
       instructions: [
-        "Convert the user's note into one structured task for a 14-year-old student's planner.",
-        `Now is ${ctx.now} in ${ctx.timezone}. Resolve relative dates against it and return ISO-8601 UTC instants.`,
-        `Known courses: ${ctx.courses.join(", ") || "none"}.`,
-        `Known projects: ${ctx.projects.join(", ") || "none"}.`,
-        "Only set courseName or projectName to an exact value from those lists, otherwise null.",
-        "Keep the title short and action-first. Estimate a realistic duration in minutes.",
-        "Keep everything age-appropriate. Nothing is saved — this is a preview the user confirms.",
-      ].join("\n"),
-      input: text.slice(0, 1000),
+        "You sort whatever a 14-year-old ninth grader types or pastes into their planner. The input may be one line, a messy brain dump, or a whole pasted email.",
+        "",
+        'FIRST, before anything else: break the input into every separate piece of meaning it contains, and file each one as its own item. Most inputs contain more than one. A single sentence joined by "and" is usually two items, and they are often different kinds — a deadline AND an observation about the work. Never merge two pieces into one item, and never drop the second half of what someone typed.',
+        "",
+        "Then give each piece a kind:",
+        "- 'task' — something to finish. Give it a dueAt when the text implies one.",
+        "- 'event' — something that happens at a time and place: a meeting, practice, shift, game.",
+        "- 'note' — a thought, an observation, something a teacher said, a question to ask, or an idea. It has NO date and never gets one. Use 'note' whenever a piece is about understanding or remembering rather than doing something by a deadline.",
+        "",
+        'Worked example. Input: "algebra pset due tues, and I keep messing up the sign when I factor"',
+        "Correct output: TWO items.",
+        '  1. task "Finish Algebra 2 problem set", courseName "Algebra 2", dueAt Tuesday.',
+        '  2. note "I keep messing up the sign when I factor", noteKind "thought", courseName "Algebra 2", dueAt null.',
+        "Filing only the task there would be wrong.",
+        "",
+        "Notes in detail:",
+        "- title is the thought written out in full and readable — not a summary, not a shortened label.",
+        "- noteKind 'idea' for something they might do; 'thought' for something they noticed, were told, or want to remember.",
+        "- A note about a class MUST carry its courseName; that is how it reaches the right class page.",
+        "",
+        "Dates:",
+        `- Now is ${ctx.now}. Local times are ${ctx.timezone}. Return every dueAt/startAt/endAt as an ISO-8601 UTC instant.`,
+        ctx.writtenAt
+          ? `- This text was written at ${ctx.writtenAt}. Resolve relative wording ("this Thursday", "next week") against THAT instant, not against now.`
+          : "- Resolve relative wording against now.",
+        "- When a weekday and a calendar date are both given, trust the calendar date.",
+        '- A bare weekday with no time means the end of that day, local. "after school" with no clock time means 3:30 PM local. An all-day item sets allDay true.',
+        "- Skip anything cancelled, or already past relative to now.",
+        "- Never invent a date. No date implied means dueAt null — normal and fine.",
+        "",
+        "Classes:",
+        `- Known classes: ${ctx.courses.join(", ") || "none"}.`,
+        ctx.teachers && ctx.teachers.length > 0
+          ? `- Who teaches what: ${ctx.teachers.join("; ")}. A teacher's name in the text tells you the class.`
+          : "",
+        '- Set courseName only to an exact class name from that list, otherwise null. Match loose wording to the real name: "fin lit" is Financial Lit, "bio" is Biology, "english" is English 9 H.',
+        "",
+        "Splitting further:",
+        "- One item per distinct thing. Three dates in one email is three items.",
+        "- A sign-up that gates a dated event is its own task, due just before that event starts.",
+        "- Do not split one thought into several notes.",
+        "",
+        "Task titles are short and action-first. Estimate a realistic duration in minutes for tasks. Quote the words each item came from in `evidence`.",
+        "Keep everything age-appropriate. Return an empty items array and say why in `note` only if there is genuinely nothing to file.",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      input: text.slice(0, 8000),
       text: {
         format: {
           type: "json_schema",
-          name: "task_draft",
-          strict: true,
-          schema: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              title: { type: "string" },
-              description: { type: ["string", "null"] },
-              category: { type: "string", enum: ["school", "work", "personal"] },
-              courseName: { type: ["string", "null"] },
-              projectName: { type: ["string", "null"] },
-              dueAt: { type: ["string", "null"] },
-              dueAllDay: { type: "boolean" },
-              priority: { type: "string", enum: ["urgent", "high", "normal", "low"] },
-              estimateMin: { type: "integer" },
-              subtasks: { type: "array", items: { type: "string" } },
-            },
-            required: [
-              "title",
-              "description",
-              "category",
-              "courseName",
-              "projectName",
-              "dueAt",
-              "dueAllDay",
-              "priority",
-              "estimateMin",
-              "subtasks",
-            ],
-          },
-        },
-      },
-    });
-
-    const raw = (response as { output_text?: string }).output_text;
-    if (!raw) return { ok: false, code: "empty_response", message: "Compass returned nothing." };
-    return { ok: true, draft: JSON.parse(raw) as unknown };
-  } catch (error) {
-    const event = toErrorEvent(error);
-    return {
-      ok: false,
-      code: event.type === "error" ? event.code : "error",
-      message: event.type === "error" ? event.message : "Request failed.",
-    };
-  }
-}
-
-// ---- email → many items --------------------------------------------------
-
-/**
- * Pulls every dated commitment out of one message.
- *
- * A club email is not one task. A single WBE announcement can carry a cancelled
- * meeting, a first meeting three days out, two volunteer shifts on different
- * days with different hours, and a sign-up deadline — so this returns an array,
- * not a single draft.
- *
- * Two rules matter more than anything else here:
- *
- *   - The email's *own* received date anchors relative wording. "This Wednesday"
- *     in a message sent last Monday is not this Wednesday now.
- *   - Every item carries `evidence`: the sentence it came from. A wrong time is
- *     then traceable to the line that produced it instead of being unexplainable.
- *
- * Nothing is saved. The caller previews these and the user confirms each one.
- */
-export async function extractItemsFromEmail(
-  source: { subject: string; from: string; receivedAt: string; body: string },
-  ctx: { now: string; timezone: string; clientId: string },
-): Promise<{ ok: boolean; items?: unknown[]; note?: string; code?: string; message?: string }> {
-  let openai: OpenAI;
-  try {
-    openai = client();
-  } catch {
-    return {
-      ok: false,
-      code: "missing_key",
-      message: "Compass is not configured. Add OPENAI_API_KEY on the server to enable this.",
-    };
-  }
-
-  const safetyIdentifier = await hashIdentifier(ctx.clientId, serverEnv.safetyIdentifierSalt);
-
-  try {
-    const response = await openai.responses.create({
-      model: serverEnv.openaiModel,
-      store: false,
-      safety_identifier: safetyIdentifier,
-      // Extraction returns several items so it needs more room than a single
-      // draft, but it still respects the configured ceiling rather than
-      // opting out of the spending guard.
-      max_output_tokens: Math.min(2000, serverEnv.openaiMaxOutputTokens * 2),
-      instructions: [
-        "Extract every dated commitment from this email for a 14-year-old student's planner.",
-        "",
-        "Dates — the most important part:",
-        `- The email was received at ${source.receivedAt}. Resolve relative wording ("this Wednesday", "next week", "tomorrow") against THAT instant, not against now.`,
-        `- Now is ${ctx.now}. The timezone for every local time in the email is ${ctx.timezone}.`,
-        "- Return every startAt/endAt/dueAt as an ISO-8601 UTC instant.",
-        "- When the email gives a weekday AND a calendar date, trust the calendar date.",
-        "- 'after school' with no clock time means 3:30 PM local. An all-day item sets allDay true and needs no time.",
-        "",
-        "What counts:",
-        "- kind 'event' for anything that happens at a time and place: meetings, shifts, rehearsals, games, competitions.",
-        "- kind 'task' for something to do by a deadline: sign up, submit, bring, pay, RSVP.",
-        "- One item per distinct date. A volunteer opportunity listed on two days is TWO events, each with its own hours.",
-        "- A sign-up, RSVP or registration that gates a dated event IS a task: set dueAt to just before that event starts, and name where to sign up in the description.",
-        "- Skip anything cancelled ('no meeting this week'), already past relative to now, or purely informational.",
-        "- Never invent a date out of nothing. If an activity has no date and gates nothing dated, leave it out.",
-        "",
-        "For each item, quote the exact sentence it came from in `evidence` so a wrong date is traceable.",
-        "Set location to the room or address when the email gives one, e.g. 'Room N102'.",
-        "Return an empty items array if the email carries nothing actionable, and say why in `note`.",
-      ].join("\n"),
-      input: [
-        `From: ${source.from}`,
-        `Subject: ${source.subject}`,
-        `Received: ${source.receivedAt}`,
-        "",
-        source.body.slice(0, 8000),
-      ].join("\n"),
-      text: {
-        format: {
-          type: "json_schema",
-          name: "extracted_items",
+          name: "captured_items",
           strict: true,
           schema: {
             type: "object",
@@ -473,31 +421,35 @@ export async function extractItemsFromEmail(
                   type: "object",
                   additionalProperties: false,
                   properties: {
-                    kind: { type: "string", enum: ["event", "task"] },
+                    kind: { type: "string", enum: ["task", "event", "note"] },
                     title: { type: "string" },
                     description: { type: ["string", "null"] },
+                    courseName: { type: ["string", "null"] },
                     location: { type: ["string", "null"] },
+                    dueAt: { type: ["string", "null"] },
                     startAt: { type: ["string", "null"] },
                     endAt: { type: ["string", "null"] },
                     allDay: { type: "boolean" },
-                    dueAt: { type: ["string", "null"] },
                     category: { type: "string", enum: ["school", "work", "personal"] },
                     priority: { type: "string", enum: ["urgent", "high", "normal", "low"] },
                     estimateMin: { type: "integer" },
+                    noteKind: { type: ["string", "null"], enum: ["thought", "idea", null] },
                     evidence: { type: ["string", "null"] },
                   },
                   required: [
                     "kind",
                     "title",
                     "description",
+                    "courseName",
                     "location",
+                    "dueAt",
                     "startAt",
                     "endAt",
                     "allDay",
-                    "dueAt",
                     "category",
                     "priority",
                     "estimateMin",
+                    "noteKind",
                     "evidence",
                   ],
                 },
@@ -510,7 +462,8 @@ export async function extractItemsFromEmail(
     });
 
     const raw = (response as { output_text?: string }).output_text;
-    if (!raw) return { ok: false, code: "empty_response", message: "Compass returned nothing." };
+    if (!raw)
+      return { ok: false, code: "empty_response", message: "The assistant returned nothing." };
     const parsed = JSON.parse(raw) as { items?: unknown[]; note?: string | null };
     return {
       ok: true,

@@ -39,9 +39,7 @@ export const CompassSnapshotSchema = z
     tasks: z.array(z.record(z.unknown())).max(120),
     assignments: z.array(z.record(z.unknown())).max(120),
     events: z.array(z.record(z.unknown())).max(160),
-    projects: z.array(z.record(z.unknown())).max(40),
-    opportunities: z.array(z.record(z.unknown())).max(60),
-    focus: z.record(z.unknown()),
+    notes: z.array(z.record(z.unknown())).max(80),
     courses: z.array(z.string().max(120)).max(20),
     isDemo: z.boolean(),
   })
@@ -50,24 +48,48 @@ export const CompassSnapshotSchema = z
 export const CompassRequestSchema = z.object({
   messages: z.array(CompassMessageSchema).min(1).max(24),
   snapshot: CompassSnapshotSchema,
-  tone: z.enum(["concise", "coach", "detailed"]).default("concise"),
   clientId: z.string().min(8).max(64),
 });
 
-export const CompassTaskRequestSchema = z.object({
-  text: z.string().min(2).max(1000),
+/**
+ * Capture accepts a whole pasted email, not just a typed line, so the ceiling
+ * is generous — but still a ceiling, because the body is billed by the token.
+ */
+export const CaptureRequestSchema = z.object({
+  text: z.string().min(2).max(8000),
   courses: z.array(z.string().max(120)).max(20).default([]),
-  projects: z.array(z.string().max(120)).max(20).default([]),
+  /** "Class — Teacher" pairs, so "Robson wants…" resolves to English 9 H. */
+  teachers: z.array(z.string().max(160)).max(20).default([]),
   timezone: z.string().max(64).default("America/Los_Angeles"),
   clientId: z.string().min(8).max(64),
+});
+
+/** One item the model filed. Re-validated here before it can reach the UI. */
+export const CapturedItemSchema = z.object({
+  kind: z.enum(["task", "event", "note"]),
+  title: z.string().min(1).max(240),
+  description: z.string().max(2000).nullish(),
+  courseName: z.string().max(120).nullish(),
+  location: z.string().max(200).nullish(),
+  dueAt: z.string().max(40).nullish(),
+  startAt: z.string().max(40).nullish(),
+  endAt: z.string().max(40).nullish(),
+  allDay: z.boolean().default(false),
+  category: z.enum(["school", "work", "personal"]).default("school"),
+  priority: z.enum(["urgent", "high", "normal", "low"]).default("normal"),
+  /**
+   * Zero is allowed, and that is the point: a note takes no time, and the
+   * model correctly returns 0 for one. Requiring 5 here silently deleted every
+   * note the capture box produced — the schema rejected the item and the
+   * caller filtered it out without a word. Tasks are clamped to a sensible
+   * floor where they are created instead.
+   */
+  estimateMin: z.number().int().min(0).max(600).default(30),
+  noteKind: z.enum(["thought", "idea"]).nullish(),
+  evidence: z.string().max(600).nullish(),
 });
 
 export const SyncRequestSchema = z.object({
   providers: z.array(z.enum(SYNCABLE)).min(1).max(SYNCABLE.length),
   userId: z.string().min(1).max(64),
-  githubRepos: z.array(z.string().max(140)).max(12).default([]),
-});
-
-export const SpotifyControlSchema = z.object({
-  action: z.enum(["play", "pause", "next", "previous"]),
 });

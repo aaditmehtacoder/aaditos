@@ -43,7 +43,6 @@ export const Route = createFileRoute("/api/sync")({
         const payload = await runSync({
           providers: parsed.data.providers,
           userId: parsed.data.userId,
-          githubRepos: parsed.data.githubRepos,
         });
         return json(payload, 200, { "cache-control": "no-store" });
       },

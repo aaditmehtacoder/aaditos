@@ -25,12 +25,10 @@ import type {
   CompactTask,
   ConflictReport,
   DailyPlan,
-  FocusSummaryPayload,
   CompassProposal,
   CompassSnapshot,
   CompassToolName,
   PlanBlock,
-  ProjectStatusPayload,
 } from "./types";
 
 export interface ToolDefinition {
@@ -59,12 +57,9 @@ export const READ_TOOL_NAMES = [
   "get_task",
   "list_assignments",
   "list_events",
-  "list_projects",
-  "get_project_status",
-  "list_opportunities",
+  "list_notes",
   "create_daily_plan",
   "find_schedule_conflicts",
-  "get_focus_summary",
 ] as const satisfies readonly CompassToolName[];
 
 export const WRITE_TOOL_NAMES = [
@@ -81,7 +76,6 @@ export const TASK_DRAFT_SCHEMA = object({
   description: nullable("string"),
   category: { type: "string", enum: ["school", "work", "personal"] },
   courseName: nullable("string", { description: "Must match one of the user's course names." }),
-  projectName: nullable("string", { description: "Must match one of the user's project names." }),
   dueAt: nullable("string", { description: "ISO-8601 instant, e.g. 2026-08-12T18:00:00.000Z." }),
   dueAllDay: { type: "boolean" },
   priority: { type: "string", enum: ["urgent", "high", "normal", "low"] },
@@ -101,7 +95,6 @@ export const COMPASS_TOOLS: ToolDefinition[] = [
       category: nullable("string", { enum: ["school", "work", "personal", null] }),
       dueWithinDays: nullable("integer", { minimum: 0, maximum: 60 }),
       courseName: nullable("string"),
-      projectName: nullable("string"),
       limit: nullable("integer", { minimum: 1, maximum: 50 }),
     }),
   },
@@ -138,36 +131,14 @@ export const COMPASS_TOOLS: ToolDefinition[] = [
   },
   {
     type: "function",
-    name: "list_projects",
-    description: "List all projects with health, progress and blockers.",
-    strict: true,
-    parameters: object({}, []),
-  },
-  {
-    type: "function",
-    name: "get_project_status",
-    description: "Full status for one project, including blockers and recent activity.",
-    strict: true,
-    parameters: object({ projectId: { type: "string" } }),
-  },
-  {
-    type: "function",
-    name: "list_opportunities",
-    description: "List opportunities in the personal CRM, optionally filtered by pipeline stage.",
+    name: "list_notes",
+    description:
+      "Read the user's own notes — thoughts and ideas they wrote about a class. Call this before advising on a class, an assignment or what to work on: notes carry what the teacher actually asked for and where the user got stuck, which no deadline shows.",
     strict: true,
     parameters: object({
-      stage: nullable("string", {
-        enum: [
-          "discovered",
-          "interested",
-          "applied",
-          "follow_up",
-          "interview",
-          "accepted",
-          "closed",
-          null,
-        ],
-      }),
+      courseName: nullable("string"),
+      kind: nullable("string", { enum: ["thought", "idea", null] }),
+      limit: nullable("integer", { minimum: 1, maximum: 40 }),
     }),
   },
   {
@@ -188,13 +159,6 @@ export const COMPASS_TOOLS: ToolDefinition[] = [
     description: "Find overlapping calendar events in the next N days.",
     strict: true,
     parameters: object({ days: nullable("integer", { minimum: 1, maximum: 30 }) }),
-  },
-  {
-    type: "function",
-    name: "get_focus_summary",
-    description: "Summarize completed focus sessions over the last N days.",
-    strict: true,
-    parameters: object({ days: nullable("integer", { minimum: 1, maximum: 90 }) }),
   },
   {
     type: "function",
@@ -255,7 +219,6 @@ export function runTool(
       const category = str(args, "category");
       const within = int(args, "dueWithinDays");
       const course = str(args, "courseName")?.toLowerCase();
-      const project = str(args, "projectName")?.toLowerCase();
       const limit = int(args, "limit") ?? 20;
 
       const filtered = snap.tasks.filter((t) => {
@@ -266,7 +229,6 @@ export function runTool(
         } else if (t.status !== status) return false;
         if (category && t.category !== category) return false;
         if (course && (t.course ?? "").toLowerCase() !== course) return false;
-        if (project && (t.project ?? "").toLowerCase() !== project) return false;
         if (within !== undefined) {
           if (!t.dueAt) return false;
           const diff = dayDiff(now, t.dueAt);
@@ -309,38 +271,16 @@ export function runTool(
       return { data: { events: filtered, total: filtered.length } };
     }
 
-    case "list_projects":
-      return { data: { projects: snap.projects } };
-
-    case "get_project_status": {
-      const id = str(args, "projectId");
-      const project =
-        snap.projects.find((p) => p.id === id) ??
-        snap.projects.find((p) => p.name.toLowerCase() === (id ?? "").toLowerCase());
-      if (!project) return { data: { error: "not_found", projectId: id } };
-      const payload: ProjectStatusPayload = {
-        id: project.id,
-        name: project.name,
-        health: project.health,
-        progress: project.progress,
-        objective: project.objective,
-        blockers: project.blockers,
-        deadlineAt: project.deadlineAt,
-        recentActivity: project.recentActivity,
-        nextActions: snap.tasks
-          .filter((t) => t.project === project.name && OPEN.has(t.status))
-          .slice(0, 5)
-          .map((t) => t.title),
-      };
-      return { data: payload };
-    }
-
-    case "list_opportunities": {
-      const stage = str(args, "stage");
-      const filtered = stage
-        ? snap.opportunities.filter((o) => o.stage === stage)
-        : snap.opportunities;
-      return { data: { opportunities: filtered, total: filtered.length } };
+    case "list_notes": {
+      const course = str(args, "courseName")?.toLowerCase();
+      const kind = str(args, "kind");
+      const limit = int(args, "limit") ?? 20;
+      const filtered = snap.notes.filter((n) => {
+        if (course && (n.course ?? "").toLowerCase() !== course) return false;
+        if (kind && n.kind !== kind) return false;
+        return true;
+      });
+      return { data: { notes: filtered.slice(0, limit), total: filtered.length } };
     }
 
     case "create_daily_plan":
@@ -378,26 +318,6 @@ export function runTool(
       return { data: report };
     }
 
-    case "get_focus_summary": {
-      const days = int(args, "days") ?? 7;
-      const payload: FocusSummaryPayload = {
-        days,
-        totalMin: snap.focus.last7DaysMin,
-        sessionCount: snap.focus.sessionCount,
-        byCategory: Object.entries(snap.focus.byCategory).map(([category, minutes]) => ({
-          category,
-          minutes,
-        })),
-        plannedVsCompleted: {
-          plannedMin: snap.tasks
-            .filter((t) => OPEN.has(t.status))
-            .reduce((sum, t) => sum + t.estimateMin, 0),
-          completedMin: snap.focus.last7DaysMin,
-        },
-      };
-      return { data: payload };
-    }
-
     case "propose_task": {
       const draft: TaskDraft = {
         title: str(args, "title") ?? "Untitled task",
@@ -413,10 +333,6 @@ export function runTool(
         draft.dueAt = new Date(dueAt).toISOString();
       const courseName = str(args, "courseName");
       if (courseName && snap.courses.includes(courseName)) draft.courseName = courseName;
-      const projectName = str(args, "projectName");
-      if (projectName && snap.projects.some((p) => p.name === projectName)) {
-        draft.projectName = projectName;
-      }
       const subtasks = args["subtasks"];
       if (Array.isArray(subtasks) && subtasks.length > 0) {
         draft.subtasks = subtasks.filter((s): s is string => typeof s === "string").slice(0, 12);

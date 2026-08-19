@@ -83,7 +83,6 @@ export const Route = createFileRoute("/api/compass")({
               for await (const event of runCompassTurn({
                 messages: parsed.data.messages,
                 snapshot: parsed.data.snapshot as never,
-                tone: parsed.data.tone,
                 clientId: parsed.data.clientId,
                 signal: request.signal,
               })) {

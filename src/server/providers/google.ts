@@ -13,12 +13,12 @@
 
 import type { RawEvent } from "@/lib/core/normalize";
 import { stableId } from "@/lib/core/ids";
-import type { CalendarWriteResult, GoogleResult, GoogleStatus } from "@/lib/integrations/contracts";
+import type { GoogleResult, GoogleStatus } from "@/lib/integrations/contracts";
 import type { Assignment, Course, ISODateTime } from "@/lib/core/types";
 
 import { serverEnv } from "../env";
 
-export type { CalendarWriteResult, GoogleResult, GoogleStatus };
+export type { GoogleResult, GoogleStatus };
 
 /**
  * Scopes, and exactly why each one is here.
@@ -26,24 +26,25 @@ export type { CalendarWriteResult, GoogleResult, GoogleStatus };
  * `calendar.events` is the only scope that can write, and it is deliberately
  * narrower than `calendar`: it can create and update events but cannot create,
  * delete or share a calendar. Everything else is readonly. Gmail is readonly
- * and further narrowed by the search query in providers/gmail.ts.
+ * and read-only throughout.
+ */
+/**
+ * Read-only, and nothing more.
+ *
+ * The write scope and the Gmail scope both went with the features that used
+ * them. That is not only tidiness: a school-managed Google account is reviewed
+ * against what an app asks for, and an app that can only read a calendar and a
+ * course list has a materially better chance of being allowed at all than one
+ * that can also write events and read mail.
  */
 export const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/calendar.readonly",
-  "https://www.googleapis.com/auth/calendar.events",
   "https://www.googleapis.com/auth/classroom.courses.readonly",
   "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
   "https://www.googleapis.com/auth/classroom.student-submissions.me.readonly",
-  "https://www.googleapis.com/auth/gmail.readonly",
   "openid",
   "email",
 ];
-
-/** The scope a given capability needs, for honest "reconnect to enable" messages. */
-export const SCOPE_FOR = {
-  calendarWrite: "https://www.googleapis.com/auth/calendar.events",
-  gmail: "https://www.googleapis.com/auth/gmail.readonly",
-} as const;
 
 const AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
@@ -451,112 +452,6 @@ export interface CalendarEventInput {
   endAt?: string | undefined;
   allDay?: boolean | undefined;
   timezone?: string | undefined;
-}
-
-/**
- * Creates one event on the user's primary calendar.
- *
- * This is the only write in AaditOS, and it only ever runs from an explicit
- * confirmation in the UI — never from a sync, a cron run, or a model tool call.
- * An all-day event uses Google's exclusive `end.date`, so a single-day event
- * ends on the following calendar day; getting that wrong shows the event as
- * zero-length.
- */
-export async function createCalendarEvent(
-  refreshToken: string,
-  input: CalendarEventInput,
-): Promise<CalendarWriteResult> {
-  if (!googleConfigured()) {
-    return {
-      ok: false,
-      code: "not_configured",
-      message: "Google is not configured on the server.",
-    };
-  }
-
-  const start = new Date(input.startAt);
-  if (Number.isNaN(start.getTime())) {
-    return { ok: false, code: "bad_input", message: "That event has no valid start time." };
-  }
-
-  const timezone = input.timezone ?? "America/Los_Angeles";
-  const end = input.endAt ? new Date(input.endAt) : null;
-  const validEnd = end && !Number.isNaN(end.getTime()) && end > start ? end : null;
-
-  const body: Record<string, unknown> = {
-    summary: input.title.slice(0, 250),
-    ...(input.description ? { description: input.description.slice(0, 4000) } : {}),
-    ...(input.location ? { location: input.location.slice(0, 250) } : {}),
-    ...(input.allDay
-      ? {
-          start: { date: calendarDate(start, timezone) },
-          // Google treats end.date as exclusive.
-          end: { date: calendarDate(new Date(start.getTime() + 86_400_000), timezone) },
-        }
-      : {
-          start: { dateTime: start.toISOString(), timeZone: timezone },
-          end: {
-            dateTime: (validEnd ?? new Date(start.getTime() + 3_600_000)).toISOString(),
-            timeZone: timezone,
-          },
-        }),
-  };
-
-  let accessToken: string;
-  try {
-    accessToken = await accessTokenFromRefresh(refreshToken);
-  } catch (error) {
-    return {
-      ok: false,
-      code: "auth",
-      message: error instanceof Error ? error.message : "Could not refresh Google access.",
-    };
-  }
-
-  try {
-    const response = await fetch(
-      "https://www.googleapis.com/calendar/v3/calendars/primary/events",
-      {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${accessToken}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(12_000),
-      },
-    );
-
-    const data = (await response.json().catch(() => ({}))) as {
-      id?: string;
-      htmlLink?: string;
-      error?: { message?: string };
-    };
-
-    if (!response.ok || !data.id) {
-      const message = data.error?.message ?? `Google Calendar returned ${response.status}`;
-      return {
-        ok: false,
-        code: response.status === 403 ? "forbidden" : "api",
-        message: /insufficient|scope/i.test(message)
-          ? "Calendar write access was not granted. Reconnect Google in Integrations to allow adding events."
-          : message,
-      };
-    }
-
-    return {
-      ok: true,
-      eventId: data.id,
-      htmlLink: data.htmlLink,
-      message: `Added "${input.title}" to your Google Calendar.`,
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      code: "network",
-      message: error instanceof Error ? error.message : "Could not reach Google Calendar.",
-    };
-  }
 }
 
 /** YYYY-MM-DD as seen in the given timezone, not in UTC. */

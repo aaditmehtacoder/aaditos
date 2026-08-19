@@ -1,20 +1,31 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { newId } from "@/lib/core/ids";
 import { serverEnv } from "@/server/env";
+import {
+  adminConfig,
+  listActiveUserIds,
+  recordSyncRunForUser,
+  replaceEventsForUser,
+} from "@/server/supabase-admin";
 import { runSync } from "@/server/sync";
 
 /**
- * Scheduled sync endpoint (Vercel Cron).
+ * Scheduled sync.
  *
- * Protected by `CRON_SECRET`, sent either as `Authorization: Bearer <secret>`
- * (what Vercel Cron does) or `?secret=`.
+ * This used to only warm the server's provider caches, which meant the data in
+ * anyone's account was exactly as fresh as the last time they opened the app.
+ * Now it writes: it fetches the Wilcox calendars once, then persists the
+ * normalized result into every active account with the service-role key. Open
+ * the app after three days away and the week is already correct.
  *
- * What it actually does: refreshes the server-side provider caches — the Wilcox
- * calendar HTML, weather, GitHub, Vercel and Spotify responses — so the next
- * client sync is instant and rate limits stay low. It does not write to a
- * user's workspace, because in the default configuration the workspace lives in
- * the browser. With Supabase configured, extend this handler to persist through
- * `SupabaseRepository` using the service-role key.
+ * Google is deliberately not here. Its refresh token lives in a sealed cookie
+ * belonging to one browser session, which a scheduled run does not have — and
+ * an unattended retry against lapsed consent would just produce an error every
+ * few minutes. Google syncs from the browser, where a human can re-consent.
+ *
+ * Protected by `CRON_SECRET`, sent as `Authorization: Bearer <secret>` (what
+ * Vercel Cron and the GitHub Actions schedule both do) or as `?secret=`.
  */
 export const Route = createFileRoute("/api/cron/sync")({
   server: {
@@ -41,19 +52,61 @@ async function handle(request: Request): Promise<Response> {
     return json({ ok: false, error: "Unauthorized" }, 401);
   }
 
-  const payload = await runSync({
-    providers: ["wilcox", "weather", "github", "vercel", "spotify"],
-    userId: "cron",
-    githubRepos: [],
-  });
+  const startedAt = new Date().toISOString();
+  const payload = await runSync({ providers: ["wilcox", "weather"], userId: "cron" });
+
+  // Fetching succeeded or it did not; persisting is a separate outcome, and
+  // reporting them together would hide a silent write failure behind a green
+  // fetch. Both are returned.
+  let usersWritten = 0;
+  let eventsWritten = 0;
+  let writeError: string | undefined;
+
+  const config = adminConfig();
+  const wilcox = payload.wilcox;
+
+  if (config && wilcox && wilcox.events.length > 0) {
+    try {
+      const userIds = await listActiveUserIds(config);
+      const finishedAt = new Date().toISOString();
+      for (const userId of userIds) {
+        // The rows carry the cron's placeholder id from normalization; each
+        // account has to own its own copy.
+        const events = wilcox.events.map((event) => ({ ...event, userId }));
+        const written = await replaceEventsForUser(config, userId, wilcox.calendarIds, events);
+        eventsWritten += written;
+        usersWritten += 1;
+        await recordSyncRunForUser(config, userId, {
+          id: newId(),
+          provider: "wilcox",
+          startedAt,
+          finishedAt,
+          ok: true,
+          imported: written,
+          message: `${written} events from the scheduled sync`,
+        });
+      }
+    } catch (error) {
+      // A failed write must not fail the endpoint: the fetch still succeeded,
+      // and returning 500 would make the schedule look broken when it is not.
+      writeError = error instanceof Error ? error.message : "write failed";
+      console.error("[cron] persisting sync failed", { message: writeError });
+    }
+  }
 
   console.info("[cron] sync complete", {
     runs: payload.runs.map((r) => ({ provider: r.provider, ok: r.ok })),
+    usersWritten,
+    eventsWritten,
   });
 
   return json({
-    ok: payload.runs.every((r) => r.ok || r.needsCredentials),
+    ok: payload.runs.every((r) => r.ok || r.needsCredentials) && !writeError,
     ranAt: new Date().toISOString(),
+    usersWritten,
+    eventsWritten,
+    ...(writeError ? { writeError } : {}),
+    ...(config ? {} : { note: "Supabase service role not configured; nothing was persisted." }),
     runs: payload.runs.map((r) => ({
       provider: r.provider,
       ok: r.ok,

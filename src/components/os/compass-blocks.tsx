@@ -1,27 +1,33 @@
 /**
- * Native renderers for Compass tool results.
+ * Native renderers for the assistant's tool results.
  *
- * Compass's answers are rendered as real components — plans, conflict warnings,
- * checklists, project summaries — rather than as a wall of markdown. Write
- * proposals always render as a confirmation card that does nothing until the
- * user presses Save.
+ * Answers render as real components — plans, conflict warnings, checklists —
+ * rather than as a wall of markdown. Write proposals always render as a
+ * confirmation card that does nothing until the user presses Save.
  */
 
-import { AlertTriangle, ArrowRight, CalendarClock, Check, Clock, X } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  CalendarClock,
+  Check,
+  Clock,
+  Lightbulb,
+  Timer,
+  X,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { Pill } from "@/components/os/primitives";
-import { TaskDraftPreview } from "@/components/os/quick-add";
 import { Button } from "@/components/ui/button";
 import { formatDuration, formatTime, relativeDayLabel } from "@/lib/core/time";
+import type { TaskDraft } from "@/lib/core/nl-task";
 import type {
   ConflictReport,
   DailyPlan,
-  FocusSummaryPayload,
   CompassProposal,
   CompassToolName,
-  ProjectStatusPayload,
 } from "@/lib/compass/types";
 import { useOS } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -210,46 +216,41 @@ export function EventTimeline({
   );
 }
 
-export function ProjectSummaryCard({ project }: { project: ProjectStatusPayload }) {
+/** What a proposed task will look like once saved. Nothing is saved yet. */
+export function TaskDraftPreview({ draft }: { draft: TaskDraft }) {
   return (
-    <div className="rounded-[12px] border border-border bg-card p-3">
-      <div className="flex items-center justify-between gap-2">
-        <p className="truncate text-[13px] font-medium">{project.name}</p>
+    <div className="rounded-[12px] border border-border bg-secondary/40 p-3">
+      <p className="text-[13.5px] font-medium">{draft.title}</p>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <Pill tone="neutral">{draft.category}</Pill>
         <Pill
           tone={
-            project.health === "at_risk"
+            draft.priority === "urgent"
               ? "urgent"
-              : project.health === "attention"
+              : draft.priority === "high"
                 ? "warning"
-                : "success"
+                : "neutral"
           }
         >
-          {project.health.replace("_", " ")}
+          {draft.priority} priority
         </Pill>
+        <Pill tone="neutral">
+          <Timer className="size-3" aria-hidden />
+          {formatDuration(draft.estimateMin)}
+        </Pill>
+        <Pill tone="neutral">
+          <CalendarClock className="size-3" aria-hidden />
+          {draft.dueAt
+            ? `${relativeDayLabel(draft.dueAt)}${draft.dueAllDay ? "" : ` · ${formatTime(draft.dueAt)}`}`
+            : "No due date"}
+        </Pill>
+        {draft.courseName ? <Pill tone="neutral">{draft.courseName}</Pill> : null}
       </div>
-      <p className="mt-1 text-[12px] text-muted-foreground">{project.objective}</p>
-      {project.blockers.length > 0 ? (
+      {draft.subtasks && draft.subtasks.length > 0 ? (
         <ul className="mt-2 space-y-0.5">
-          {project.blockers.map((blocker) => (
-            <li
-              key={blocker}
-              className="flex items-start gap-1.5 text-[11.5px] text-warning-strong"
-            >
-              <AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden />
-              {blocker}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {project.nextActions.length > 0 ? (
-        <ul className="mt-2 space-y-0.5">
-          {project.nextActions.map((action) => (
-            <li
-              key={action}
-              className="flex items-start gap-1.5 text-[11.5px] text-muted-foreground"
-            >
-              <ArrowRight className="mt-0.5 size-3 shrink-0" aria-hidden />
-              {action}
+          {draft.subtasks.map((title) => (
+            <li key={title} className="text-[12px] text-muted-foreground">
+              · {title}
             </li>
           ))}
         </ul>
@@ -258,25 +259,33 @@ export function ProjectSummaryCard({ project }: { project: ProjectStatusPayload 
   );
 }
 
-export function FocusSummaryCard({ summary }: { summary: FocusSummaryPayload }) {
+/** The user's own notes, quoted back when the assistant used them. */
+export function NoteList({
+  notes,
+}: {
+  notes: Array<{ id: string; body: string; kind: string; course?: string | undefined }>;
+}) {
+  if (notes.length === 0) return null;
   return (
-    <div className="rounded-[12px] border border-border bg-card p-3">
-      <p className="text-[12.5px] font-medium">
-        {formatDuration(summary.totalMin)} across {summary.sessionCount} sessions in the last{" "}
-        {summary.days} days
-      </p>
-      <ul className="mt-2 space-y-0.5">
-        {summary.byCategory.map((entry) => (
-          <li key={entry.category} className="text-[11.5px] text-muted-foreground">
-            {entry.category}: {formatDuration(entry.minutes)}
-          </li>
-        ))}
-      </ul>
-    </div>
+    <ul className="space-y-1.5">
+      {notes.slice(0, 6).map((note) => (
+        <li
+          key={note.id}
+          className="flex items-start gap-2 rounded-[12px] border border-border bg-card px-3 py-2"
+        >
+          <Lightbulb className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+          <div className="min-w-0">
+            <p className="text-[12.5px]">{note.body}</p>
+            {note.course ? (
+              <p className="mt-0.5 text-[11.5px] text-muted-foreground">{note.course}</p>
+            ) : null}
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }
 
-/** A write proposal. Nothing is saved until this card's Save button is pressed. */
 export function ProposalCard({ proposal }: { proposal: CompassProposal }) {
   const { createTask, updateTask, workspace } = useOS();
   const [state, setState] = useState<"pending" | "saved" | "dismissed">("pending");
@@ -303,13 +312,11 @@ export function ProposalCard({ proposal }: { proposal: CompassProposal }) {
       if (proposal.tool === "propose_task" && proposal.draft) {
         const draft = proposal.draft;
         const course = workspace.courses.find((c) => c.name === draft.courseName);
-        const project = workspace.projects.find((p) => p.name === draft.projectName);
         const created = await createTask({
           title: draft.title,
           description: draft.description,
           category: draft.category,
           courseId: course?.id,
-          projectId: project?.id,
           dueAt: draft.dueAt,
           dueAllDay: draft.dueAllDay,
           priority: draft.priority,
@@ -339,7 +346,7 @@ export function ProposalCard({ proposal }: { proposal: CompassProposal }) {
       <p className="mt-1.5 text-[12.5px]">{proposal.summary}</p>
       {proposal.draft ? (
         <div className="mt-2.5">
-          <TaskDraftPreview draft={proposal.draft} origin="compass" />
+          <TaskDraftPreview draft={proposal.draft} />
         </div>
       ) : null}
       <div className="mt-3 flex gap-2">
@@ -361,8 +368,7 @@ export function ProposalCard({ proposal }: { proposal: CompassProposal }) {
         </Button>
       </div>
       <p className="mt-2 flex items-center gap-1 text-[11px] text-muted-foreground">
-        <Clock className="size-3" aria-hidden /> Compass never saves, sends or deletes anything on
-        its own.
+        <Clock className="size-3" aria-hidden /> Nothing is saved until you press this.
       </p>
     </div>
   );
@@ -382,12 +388,8 @@ export function ToolResultBlock({ name, data }: { name: CompassToolName; data: u
       return <AssignmentList assignments={(payload["assignments"] ?? []) as never} />;
     case "list_events":
       return <EventTimeline events={(payload["events"] ?? []) as never} />;
-    case "get_project_status":
-      return payload["error"] ? null : (
-        <ProjectSummaryCard project={payload as unknown as ProjectStatusPayload} />
-      );
-    case "get_focus_summary":
-      return <FocusSummaryCard summary={payload as unknown as FocusSummaryPayload} />;
+    case "list_notes":
+      return <NoteList notes={(payload["notes"] ?? []) as never} />;
     default:
       return null;
   }

@@ -7,7 +7,7 @@
  * technically possible:
  *
  *   - once shortly after load, if the last sync is older than the interval
- *   - every 30 minutes while the tab is open
+ *   - every 5 minutes while the tab is open
  *   - when the tab becomes visible again after being hidden a while
  *   - when the device comes back online
  *
@@ -17,7 +17,7 @@
  *      times in a minute triggers one sync, not ten.
  *   2. Only providers that need no interactive credential are synced
  *      automatically. Google is left out on purpose: it fails loudly when its
- *      consent has lapsed, and an automatic retry every 30 minutes would turn
+ *      consent has lapsed, and an automatic retry every few minutes would turn
  *      one expired token into a stream of identical errors.
  *   3. Nothing runs offline, and nothing runs while a sync is already going.
  *
@@ -31,12 +31,21 @@ import type { SyncProvider } from "@/lib/integrations/contracts";
 import { useSync } from "@/lib/integrations/use-integrations";
 import { useOS } from "@/lib/store";
 
-/** Public data and server-side credentials only — nothing that can need consent. */
-const AUTO_PROVIDERS: SyncProvider[] = ["wilcox", "weather", "github", "vercel", "spotify"];
+/** Public data only — nothing here can need an interactive consent. */
+const AUTO_PROVIDERS: SyncProvider[] = ["wilcox", "weather"];
 
-const INTERVAL_MS = 30 * 60 * 1000;
+/**
+ * Five minutes, not thirty.
+ *
+ * The old interval meant a calendar change made at lunch was not visible until
+ * after school, which reads as the app being broken rather than as a schedule.
+ * Both providers here are cheap public reads with no rate limit worth worrying
+ * about, and the scheduled job on the server keeps things fresh while the tab
+ * is closed, so this only has to cover the time you are actually looking.
+ */
+const INTERVAL_MS = 5 * 60 * 1000;
 /** Long enough that a quick tab switch does not trigger a fetch. */
-const VISIBILITY_MIN_AGE_MS = 10 * 60 * 1000;
+const VISIBILITY_MIN_AGE_MS = 2 * 60 * 1000;
 /** Lets the first paint finish before any network work starts. */
 const STARTUP_DELAY_MS = 4_000;
 

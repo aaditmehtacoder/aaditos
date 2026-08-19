@@ -9,9 +9,9 @@ import { describe, expect, it } from "vitest";
 
 import { checkRateLimit } from "@/server/rate-limit";
 import {
+  CaptureRequestSchema,
+  CapturedItemSchema,
   CompassRequestSchema,
-  CompassTaskRequestSchema,
-  SpotifyControlSchema,
   SyncRequestSchema,
 } from "@/server/schemas";
 
@@ -24,9 +24,7 @@ const validSnapshot = {
   tasks: [],
   assignments: [],
   events: [],
-  projects: [],
-  opportunities: [],
-  focus: {},
+  notes: [],
   courses: ["Algebra 2"],
   isDemo: true,
 };
@@ -34,20 +32,12 @@ const validSnapshot = {
 const validCompass = {
   messages: [{ role: "user" as const, content: "Plan my afternoon" }],
   snapshot: validSnapshot,
-  tone: "concise" as const,
   clientId: "abcdefgh12345678",
 };
 
 describe("CompassRequestSchema", () => {
   it("accepts a well-formed request", () => {
     expect(CompassRequestSchema.safeParse(validCompass).success).toBe(true);
-  });
-
-  it("defaults the tone when it is omitted", () => {
-    const { tone, ...withoutTone } = validCompass;
-    void tone;
-    const parsed = CompassRequestSchema.parse(withoutTone);
-    expect(parsed.tone).toBe("concise");
   });
 
   it("rejects an empty message list", () => {
@@ -118,34 +108,88 @@ describe("CompassRequestSchema", () => {
   });
 });
 
-describe("CompassTaskRequestSchema", () => {
+describe("CaptureRequestSchema", () => {
   it("accepts text plus context", () => {
     expect(
-      CompassTaskRequestSchema.safeParse({
+      CaptureRequestSchema.safeParse({
         text: "Finish the worksheet tomorrow",
         courses: ["Algebra 2"],
-        projects: [],
         timezone: "America/Los_Angeles",
         clientId: "abcdefgh12345678",
       }).success,
     ).toBe(true);
   });
 
-  it("rejects text that is too short or too long", () => {
+  it("accepts a whole pasted email, and rejects one past the ceiling", () => {
     const base = { clientId: "abcdefgh12345678" };
-    expect(CompassTaskRequestSchema.safeParse({ ...base, text: "a" }).success).toBe(false);
-    expect(CompassTaskRequestSchema.safeParse({ ...base, text: "x".repeat(1001) }).success).toBe(
-      false,
-    );
+    expect(CaptureRequestSchema.safeParse({ ...base, text: "x".repeat(7999) }).success).toBe(true);
+    expect(CaptureRequestSchema.safeParse({ ...base, text: "x".repeat(8001) }).success).toBe(false);
   });
 
-  it("defaults the course and project lists", () => {
-    const parsed = CompassTaskRequestSchema.parse({
+  it("rejects text that is too short", () => {
+    expect(
+      CaptureRequestSchema.safeParse({ text: "a", clientId: "abcdefgh12345678" }).success,
+    ).toBe(false);
+  });
+
+  it("defaults the course list", () => {
+    const parsed = CaptureRequestSchema.parse({
       text: "Do the thing",
       clientId: "abcdefgh12345678",
     });
     expect(parsed.courses).toEqual([]);
-    expect(parsed.projects).toEqual([]);
+  });
+});
+
+describe("CapturedItemSchema", () => {
+  const base = { kind: "task" as const, title: "Finish the packet" };
+
+  it("fills in every default a bare item leaves out", () => {
+    const parsed = CapturedItemSchema.parse(base);
+    expect(parsed.category).toBe("school");
+    expect(parsed.priority).toBe("normal");
+    expect(parsed.estimateMin).toBe(30);
+    expect(parsed.allDay).toBe(false);
+  });
+
+  it("accepts the nulls the model returns for absent fields", () => {
+    const parsed = CapturedItemSchema.safeParse({
+      ...base,
+      kind: "note",
+      courseName: null,
+      dueAt: null,
+      noteKind: "idea",
+      evidence: null,
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects a kind the app cannot file", () => {
+    expect(CapturedItemSchema.safeParse({ ...base, kind: "reminder" }).success).toBe(false);
+  });
+
+  it("rejects an estimate outside the allowed range", () => {
+    expect(CapturedItemSchema.safeParse({ ...base, estimateMin: 5000 }).success).toBe(false);
+    expect(CapturedItemSchema.safeParse({ ...base, estimateMin: -1 }).success).toBe(false);
+  });
+
+  /**
+   * Regression: this schema once required `estimateMin >= 5`, and the model
+   * correctly returns 0 for a note because a note takes no time. Every note the
+   * capture box produced was therefore rejected here and filtered out by the
+   * caller, with no error anywhere — the feature simply did nothing.
+   */
+  it("accepts a zero-minute note, which is what the model returns for one", () => {
+    const parsed = CapturedItemSchema.safeParse({
+      kind: "note",
+      title: "I keep losing points on sign errors, not the method",
+      noteKind: "thought",
+      courseName: "Algebra 2",
+      estimateMin: 0,
+      dueAt: null,
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.estimateMin).toBe(0);
   });
 });
 
@@ -166,26 +210,10 @@ describe("SyncRequestSchema", () => {
     expect(SyncRequestSchema.safeParse({ providers: [], userId: "u1" }).success).toBe(false);
   });
 
-  it("caps the number of repositories", () => {
-    expect(
-      SyncRequestSchema.safeParse({
-        providers: ["github"],
-        userId: "u1",
-        githubRepos: Array.from({ length: 20 }, (_, i) => `owner/repo-${i}`),
-      }).success,
-    ).toBe(false);
-  });
-});
-
-describe("SpotifyControlSchema", () => {
-  it("accepts the four supported actions", () => {
-    for (const action of ["play", "pause", "next", "previous"]) {
-      expect(SpotifyControlSchema.safeParse({ action }).success).toBe(true);
-    }
-  });
-
-  it("rejects anything else", () => {
-    expect(SpotifyControlSchema.safeParse({ action: "delete_library" }).success).toBe(false);
+  it("rejects a provider that was removed", () => {
+    expect(SyncRequestSchema.safeParse({ providers: ["github"], userId: "u1" }).success).toBe(
+      false,
+    );
   });
 });
 

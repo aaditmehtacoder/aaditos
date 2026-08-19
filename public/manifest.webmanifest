@@ -1,7 +1,7 @@
 {
   "name": "AaditOS",
   "short_name": "AaditOS",
-  "description": "A private personal operating system for school, projects, opportunities and focus.",
+  "description": "A private planner: today, your classes, and one box for everything else.",
   "id": "/",
   "start_url": "/",
   "scope": "/",
@@ -39,27 +39,17 @@
     {
       "name": "Today",
       "url": "/",
-      "description": "What is happening today"
+      "description": "What is due and what happens today"
     },
     {
-      "name": "Tasks",
-      "url": "/tasks",
-      "description": "Every open task"
+      "name": "Classes",
+      "url": "/classes",
+      "description": "Every class, and what you thought about it"
     },
     {
-      "name": "Inbox",
-      "url": "/inbox",
-      "description": "Turn an email into dated tasks and events"
-    },
-    {
-      "name": "Focus",
-      "url": "/focus",
-      "description": "Start a focus session"
-    },
-    {
-      "name": "Compass",
-      "url": "/compass",
-      "description": "Ask the assistant"
+      "name": "Ask",
+      "url": "/ask",
+      "description": "Ask about your day"
     }
   ]
 }
