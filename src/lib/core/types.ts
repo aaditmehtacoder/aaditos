@@ -14,7 +14,18 @@ export type ISODateTime = string;
 /** ISO-8601 calendar date (`YYYY-MM-DD`) in America/Los_Angeles. */
 export type ISODate = string;
 
-export const SOURCES = ["manual", "google_classroom", "google_calendar", "wilcox", "demo"] as const;
+export const SOURCES = [
+  "manual",
+  "google_classroom",
+  "google_calendar",
+  "wilcox",
+  "demo",
+  "gmail",
+  "github",
+  "slack",
+  "notion",
+  "aeries",
+] as const;
 export type SourceId = (typeof SOURCES)[number];
 
 export const SOURCE_LABELS: Record<SourceId, string> = {
@@ -23,7 +34,36 @@ export const SOURCE_LABELS: Record<SourceId, string> = {
   google_calendar: "Calendar",
   wilcox: "Wilcox",
   demo: "Demo",
+  gmail: "Gmail",
+  github: "GitHub",
+  slack: "Slack",
+  notion: "Notion",
+  aeries: "Aeries",
 };
+
+/**
+ * A picture attached to a task or a note: a photo of the assignment sheet,
+ * the whiteboard, a screenshot of the rubric.
+ *
+ * Only metadata lives on the record. The bytes live in the repository's blob
+ * store — Supabase Storage for a real account, IndexedDB for a local one —
+ * and `ref` says where. Keeping bytes out of the row is what keeps a
+ * workspace load fast after a semester of photos.
+ */
+export interface Attachment {
+  id: UUID;
+  kind: "image";
+  /** Original file name, for the alt text and the download. */
+  name: string;
+  mimeType: string;
+  /** Bytes after client-side compression. */
+  size: number;
+  width: number;
+  height: number;
+  /** `storage:<bucket path>` or `idb:<key>`. Resolved to a URL on display. */
+  ref: string;
+  createdAt: ISODateTime;
+}
 
 export type Priority = "urgent" | "high" | "normal" | "low";
 export const PRIORITIES: Priority[] = ["urgent", "high", "normal", "low"];
@@ -62,6 +102,7 @@ export interface Task {
   externalUrl?: string | undefined;
   notes?: string | undefined;
   subtasks: Subtask[];
+  attachments: Attachment[];
   position: number;
   completedAt?: ISODateTime | undefined;
   createdAt: ISODateTime;
@@ -173,6 +214,7 @@ export interface Note {
   /** Set once this note has been turned into a task, so it is only done once. */
   taskId?: UUID | undefined;
   pinned: boolean;
+  attachments: Attachment[];
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
 }

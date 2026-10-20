@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AskRouteImport } from './routes/ask'
+import { Route as IntegrationsRouteImport } from './routes/integrations'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SigninRouteImport } from './routes/signin'
 import { Route as ApiCaptureRouteImport } from './routes/api.capture'
@@ -35,6 +36,11 @@ const IndexRoute = IndexRouteImport.update({
 const AskRoute = AskRouteImport.update({
   id: '/ask',
   path: '/ask',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IntegrationsRoute = IntegrationsRouteImport.update({
+  id: '/integrations',
+  path: '/integrations',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -116,6 +122,7 @@ const ApiGoogleStatusRoute = ApiGoogleStatusRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/ask': typeof AskRoute
+  '/integrations': typeof IntegrationsRoute
   '/settings': typeof SettingsRoute
   '/signin': typeof SigninRoute
   '/api/capture': typeof ApiCaptureRoute
@@ -135,6 +142,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/ask': typeof AskRoute
+  '/integrations': typeof IntegrationsRoute
   '/settings': typeof SettingsRoute
   '/signin': typeof SigninRoute
   '/api/capture': typeof ApiCaptureRoute
@@ -155,6 +163,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/ask': typeof AskRoute
+  '/integrations': typeof IntegrationsRoute
   '/settings': typeof SettingsRoute
   '/signin': typeof SigninRoute
   '/api/capture': typeof ApiCaptureRoute
@@ -176,6 +185,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/ask'
+    | '/integrations'
     | '/settings'
     | '/signin'
     | '/api/capture'
@@ -195,6 +205,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/ask'
+    | '/integrations'
     | '/settings'
     | '/signin'
     | '/api/capture'
@@ -214,6 +225,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/ask'
+    | '/integrations'
     | '/settings'
     | '/signin'
     | '/api/capture'
@@ -234,6 +246,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AskRoute: typeof AskRoute
+  IntegrationsRoute: typeof IntegrationsRoute
   SettingsRoute: typeof SettingsRoute
   SigninRoute: typeof SigninRoute
   ApiCaptureRoute: typeof ApiCaptureRoute
@@ -265,6 +278,13 @@ declare module '@tanstack/react-router' {
       path: '/ask'
       fullPath: '/ask'
       preLoaderRoute: typeof AskRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/integrations': {
+      id: '/integrations'
+      path: '/integrations'
+      fullPath: '/integrations'
+      preLoaderRoute: typeof IntegrationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -378,6 +398,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AskRoute: AskRoute,
+  IntegrationsRoute: IntegrationsRoute,
   SettingsRoute: SettingsRoute,
   SigninRoute: SigninRoute,
   ApiCaptureRoute: ApiCaptureRoute,

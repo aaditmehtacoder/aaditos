@@ -1,5 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Check, Download, Link2, Loader2, RefreshCw, Trash2, TriangleAlert } from "lucide-react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { Cable, Download, Loader2, RefreshCw, Trash2, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -18,7 +18,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { relativeTimeLabel } from "@/lib/core/time";
-import { useGoogleStatus, useProviderConfig, useSync } from "@/lib/integrations/use-integrations";
+import { ALL_SYNCABLE } from "@/lib/integrations/contracts";
+import { useProviderConfig, useSync } from "@/lib/integrations/use-integrations";
 import { useOS } from "@/lib/store";
 
 export const Route = createFileRoute("/settings")({
@@ -77,27 +78,21 @@ function DayWindow() {
 }
 
 /**
- * What is connected.
- *
- * Three providers, so this is a short list rather than the fourteen-card page
- * it replaced. Wilcox and the weather need no credentials and simply work;
- * Google is the only one that can need a human.
+ * A pointer, not a list. The full picture — nine apps, each with its own
+ * state and action — lives on the Integrations page; repeating it here
+ * meant two places that could disagree.
  */
 function Connections() {
   const config = useProviderConfig();
-  const google = useGoogleStatus();
   const { workspace } = useOS();
   const { sync, running } = useSync();
-
   const lastRun = workspace.syncRuns[0];
-  const googleConnected = google.data?.connected ?? false;
-  const googleConfigured = google.data?.configured ?? false;
-  const needsReconnect = (google.data?.missingScopes.length ?? 0) > 0;
+  const on = workspace.integrations.filter((i) => i.status === "connected").length;
 
   return (
     <Panel>
       <PanelHeader
-        title="Connected"
+        title="Connected apps"
         meta={lastRun?.finishedAt ? `synced ${relativeTimeLabel(lastRun.finishedAt)}` : undefined}
         action={
           <Button
@@ -105,7 +100,7 @@ function Connections() {
             variant="outline"
             className="h-8 gap-1.5 text-[12.5px]"
             disabled={running}
-            onClick={() => void sync(["wilcox", "weather", "google"])}
+            onClick={() => void sync(ALL_SYNCABLE)}
           >
             <RefreshCw className={running ? "size-3.5 animate-spin" : "size-3.5"} />
             Sync now
@@ -115,59 +110,25 @@ function Connections() {
       <div className="divide-y divide-border">
         <div className="flex items-center justify-between gap-3 px-4 py-3">
           <div className="min-w-0">
-            <p className="text-[13px] font-medium">Wilcox calendars</p>
+            <p className="text-[13px] font-medium">Integrations</p>
             <p className="text-[11.5px] text-muted-foreground">
-              School, district, athletics and counseling. No sign-in needed.
+              {on > 0 ? `${on} on.` : "Nothing synced yet."} Classroom, Gmail, Aeries, GitHub,
+              Slack, Notion and more.
             </p>
           </div>
-          <Pill tone="success">
-            <Check className="size-3" aria-hidden /> On
-          </Pill>
+          <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[12.5px]" asChild>
+            <Link to="/integrations">
+              <Cable className="size-3.5" />
+              Manage
+            </Link>
+          </Button>
         </div>
-
-        <div className="flex items-center justify-between gap-3 px-4 py-3">
-          <div className="min-w-0">
-            <p className="text-[13px] font-medium">Santa Clara weather</p>
-            <p className="text-[11.5px] text-muted-foreground">
-              Today's conditions from Open-Meteo. No sign-in needed.
-            </p>
-          </div>
-          <Pill tone="success">
-            <Check className="size-3" aria-hidden /> On
-          </Pill>
-        </div>
-
-        <div className="flex items-center justify-between gap-3 px-4 py-3">
-          <div className="min-w-0">
-            <p className="text-[13px] font-medium">Google Calendar &amp; Classroom</p>
-            <p className="text-[11.5px] text-muted-foreground">
-              {googleConnected
-                ? needsReconnect
-                  ? "Connected, but a newer permission is missing — reconnect to fix it."
-                  : `Connected as ${google.data?.email ?? "your account"}.`
-                : googleConfigured
-                  ? "Not connected. A school-managed account may refuse this."
-                  : "No Google client is configured on the server."}
-            </p>
-          </div>
-          {googleConfigured ? (
-            <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[12.5px]" asChild>
-              <a href="/api/google/auth">
-                <Link2 className="size-3.5" />
-                {googleConnected ? "Reconnect" : "Connect"}
-              </a>
-            </Button>
-          ) : (
-            <Pill tone="neutral">Off</Pill>
-          )}
-        </div>
-
         <div className="flex items-center justify-between gap-3 px-4 py-3">
           <div className="min-w-0">
             <p className="text-[13px] font-medium">Assistant</p>
             <p className="text-[11.5px] text-muted-foreground">
               {config.data?.openai
-                ? `Running ${config.data.openaiModel}.`
+                ? `${config.data.openaiModels.join(" → ")} · ${config.data.openaiKeys} key${config.data.openaiKeys === 1 ? "" : "s"}. No daily cap for you.`
                 : "No OPENAI_API_KEY on the server."}
             </p>
           </div>

@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { newId } from "@/lib/core/ids";
+import { GMAIL_SCOPE } from "@/server/providers/gmail";
 import { buildConsentUrl, googleConfigured } from "@/server/providers/google";
 import { encryptionReady, writeGoogleSession } from "@/server/google-session";
 
@@ -19,11 +20,19 @@ export function googleRedirectUri(request: Request): string {
   return `${protocol}://${host}/api/google/callback`;
 }
 
-/** Starts the Google consent flow. */
+/**
+ * Starts the Google consent flow.
+ *
+ * `?scope=gmail` adds the read-only Gmail scope to the request. It is kept
+ * out of the default so connecting Calendar and Classroom never asks for
+ * mail; Gmail is a separate Connect button with its own consent.
+ */
 export const Route = createFileRoute("/api/google/auth")({
   server: {
     handlers: {
       GET: async ({ request }) => {
+        const extra =
+          new URL(request.url).searchParams.get("scope") === "gmail" ? [GMAIL_SCOPE] : [];
         if (!googleConfigured()) {
           return problem(
             "Google is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on the server.",
@@ -41,7 +50,11 @@ export const Route = createFileRoute("/api/google/auth")({
         return new Response(null, {
           status: 302,
           headers: {
-            location: buildConsentUrl({ redirectUri: googleRedirectUri(request), state }),
+            location: buildConsentUrl({
+              redirectUri: googleRedirectUri(request),
+              state,
+              extraScopes: extra,
+            }),
             "cache-control": "no-store",
           },
         });

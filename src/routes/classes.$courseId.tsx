@@ -3,6 +3,7 @@ import { ArrowLeft, Check, Lightbulb, MessageSquare, Plus, Trash2 } from "lucide
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { AttachmentStrip } from "@/components/os/attachment-strip";
 import { CaptureBar } from "@/components/os/capture-bar";
 import { BlockSkeleton, EmptyState, Panel, PanelHeader, Pill } from "@/components/os/primitives";
 import { TaskRow } from "@/components/os/task-row";
@@ -139,6 +140,11 @@ function NoteRow({ note, courseName }: { note: Note; courseName: string }) {
 
       <div className="min-w-0 flex-1">
         <p className="whitespace-pre-wrap break-words text-[13px]">{note.body}</p>
+        <AttachmentStrip
+          attachments={note.attachments}
+          target={{ kind: "note", id: note.id }}
+          className="mt-1.5"
+        />
         <div className="mt-1 flex flex-wrap items-center gap-2 text-[11.5px] text-muted-foreground">
           <span>{NOTE_KIND_LABELS[note.kind]}</span>
           <span aria-hidden className="opacity-40">

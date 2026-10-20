@@ -24,18 +24,15 @@ import type {
   CompassToolName,
 } from "@/lib/compass/types";
 
+import { ExhaustedError, NoKeyError, ladder, withFallback, type Rung } from "./ai";
 import { serverEnv } from "./env";
 
 const MAX_TOOL_ROUNDS = 4;
+/** Mid-stream provider failures before any text: how many times to restart the round further down the ladder. */
+const MAX_STREAM_RESTARTS = 2;
 
 export class CompassConfigError extends Error {
   code = "missing_key" as const;
-}
-
-function client(): OpenAI {
-  const apiKey = serverEnv.openaiApiKey;
-  if (!apiKey) throw new CompassConfigError("OPENAI_API_KEY is not configured on the server.");
-  return new OpenAI({ apiKey, maxRetries: 2, timeout: 60_000 });
 }
 
 export function systemInstructions(snapshot: CompassSnapshot): string {
@@ -98,17 +95,12 @@ export interface RunOptions {
  * Never throws for expected failures; it emits an `error` event instead.
  */
 export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassEvent> {
-  let openai: OpenAI;
-  try {
-    openai = client();
-  } catch (error) {
+  const rungs = ladder();
+  if (rungs.length === 0) {
     yield {
       type: "error",
       code: "missing_key",
-      message:
-        error instanceof CompassConfigError
-          ? error.message
-          : "Compass is not configured on this server.",
+      message: "OPENAI_API_KEY is not configured on the server.",
       retryable: false,
     };
     return;
@@ -125,25 +117,45 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
   let inputTokens = 0;
   let outputTokens = 0;
 
+  // Where on the ladder this turn currently stands. A rung that fails mid-stream
+  // is not retried; the next round starts below it.
+  let rungStart = 0;
+  let restarts = 0;
+
   for (let round = 0; round <= MAX_TOOL_ROUNDS; round += 1) {
     const lastRound = round === MAX_TOOL_ROUNDS;
     let stream: AsyncIterable<Record<string, unknown>>;
+    let rung: Rung;
     try {
-      stream = (await openai.responses.create(
-        {
-          model: serverEnv.openaiModel,
-          instructions,
-          input: input as never,
-          tools: lastRound ? [] : (COMPASS_TOOLS as never),
-          tool_choice: "auto",
-          stream: true,
-          store: false,
-          safety_identifier: safetyIdentifier,
-          max_output_tokens: serverEnv.openaiMaxOutputTokens,
-          metadata: { app: "aaditos", surface: "compass" },
-        },
-        { signal: opts.signal },
-      )) as unknown as AsyncIterable<Record<string, unknown>>;
+      const result = await withFallback(
+        (openai, current) =>
+          openai.responses.create(
+            {
+              model: current.model,
+              instructions,
+              input: input as never,
+              tools: lastRound ? [] : (COMPASS_TOOLS as never),
+              tool_choice: "auto",
+              stream: true,
+              store: false,
+              safety_identifier: safetyIdentifier,
+              max_output_tokens: serverEnv.openaiMaxOutputTokens,
+              metadata: { app: "aaditos", surface: "compass" },
+            },
+            { signal: opts.signal },
+          ) as unknown as Promise<AsyncIterable<Record<string, unknown>>>,
+        { signal: opts.signal, rungs: rungs.slice(rungStart) },
+      );
+      stream = result.value;
+      rung = result.rung;
+      rungStart = rungs.indexOf(rung);
+      if (result.skipped.length > 0) {
+        console.warn("[compass] fell back", {
+          to: rung.model,
+          key: rung.keyIndex,
+          skipped: result.skipped.map((s) => `${s.rung.model}: ${s.reason}`),
+        });
+      }
     } catch (error) {
       yield toErrorEvent(error);
       return;
@@ -151,6 +163,7 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
 
     const calls: FunctionCallItem[] = [];
     let sawText = false;
+    let restartRound = false;
 
     try {
       for await (const event of stream) {
@@ -180,6 +193,18 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
           const response = event["response"] as Record<string, unknown> | undefined;
           const err = (response?.["error"] ?? event["error"]) as
             Record<string, unknown> | undefined;
+          // Nothing has reached the user yet, so the round can quietly start
+          // again one rung down instead of surfacing a provider hiccup.
+          if (!sawText && restarts < MAX_STREAM_RESTARTS && rungStart + 1 < rungs.length) {
+            console.warn("[compass] stream failed before any text; restarting round", {
+              model: rung.model,
+              code: String(err?.["code"] ?? "model_error"),
+            });
+            restarts += 1;
+            rungStart += 1;
+            restartRound = true;
+            break;
+          }
           yield {
             type: "error",
             code: String(err?.["code"] ?? "model_error"),
@@ -190,8 +215,19 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
         }
       }
     } catch (error) {
+      if (!sawText && restarts < MAX_STREAM_RESTARTS && rungStart + 1 < rungs.length) {
+        restarts += 1;
+        rungStart += 1;
+        round -= 1;
+        continue;
+      }
       yield toErrorEvent(error);
       return;
+    }
+
+    if (restartRound) {
+      round -= 1;
+      continue;
     }
 
     if (calls.length === 0) {
@@ -248,6 +284,20 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
 }
 
 function toErrorEvent(error: unknown): CompassEvent {
+  if (error instanceof NoKeyError) {
+    return { type: "error", code: "missing_key", message: error.message, retryable: false };
+  }
+  if (error instanceof ExhaustedError) {
+    const tried = [...new Set(error.attempts.map((a) => a.rung.model))];
+    return {
+      type: "error",
+      code: "exhausted",
+      message:
+        `Every model was busy or out of quota (tried ${tried.join(", ")}). ` +
+        `Last reason: ${error.attempts[error.attempts.length - 1]?.reason ?? "unknown"}. Try again in a moment.`,
+      retryable: true,
+    };
+  }
   if (error instanceof OpenAI.APIError) {
     const status = error.status ?? 0;
     if (status === 401) {
@@ -335,12 +385,14 @@ export async function captureItems(
     clientId: string;
     /** When the text was written, if known — an email's Received date. */
     writtenAt?: string | undefined;
+    /**
+     * Photos and screenshots as data URLs: an assignment sheet, a whiteboard,
+     * a syllabus, a calendar. The model reads them like pasted text.
+     */
+    images?: string[] | undefined;
   },
 ): Promise<CaptureResult> {
-  let openai: OpenAI;
-  try {
-    openai = client();
-  } catch {
+  if (ladder().length === 0) {
     return {
       ok: false,
       code: "missing_key",
@@ -349,117 +401,137 @@ export async function captureItems(
   }
 
   const safetyIdentifier = await hashIdentifier(ctx.clientId, serverEnv.safetyIdentifierSalt);
+  const images = (ctx.images ?? []).slice(0, 4);
+  const content: Array<Record<string, unknown>> = [];
+  const typed = text.slice(0, 8000).trim();
+  if (typed) content.push({ type: "input_text", text: typed });
+  else if (images.length > 0) {
+    content.push({ type: "input_text", text: "File everything in the attached image(s)." });
+  }
+  for (const image of images) {
+    content.push({ type: "input_image", image_url: image, detail: "auto" });
+  }
 
   try {
-    const response = await openai.responses.create({
-      model: serverEnv.openaiModel,
-      store: false,
-      safety_identifier: safetyIdentifier,
-      max_output_tokens: Math.min(2400, serverEnv.openaiMaxOutputTokens * 2),
-      instructions: [
-        "You sort whatever a 14-year-old ninth grader types or pastes into their planner. The input may be one line, a messy brain dump, or a whole pasted email.",
-        "",
-        'FIRST, before anything else: break the input into every separate piece of meaning it contains, and file each one as its own item. Most inputs contain more than one. A single sentence joined by "and" is usually two items, and they are often different kinds — a deadline AND an observation about the work. Never merge two pieces into one item, and never drop the second half of what someone typed.',
-        "",
-        "Then give each piece a kind:",
-        "- 'task' — something to finish. Give it a dueAt when the text implies one.",
-        "- 'event' — something that happens at a time and place: a meeting, practice, shift, game.",
-        "- 'note' — a thought, an observation, something a teacher said, a question to ask, or an idea. It has NO date and never gets one. Use 'note' whenever a piece is about understanding or remembering rather than doing something by a deadline.",
-        "",
-        'Worked example. Input: "algebra pset due tues, and I keep messing up the sign when I factor"',
-        "Correct output: TWO items.",
-        '  1. task "Finish Algebra 2 problem set", courseName "Algebra 2", dueAt Tuesday.',
-        '  2. note "I keep messing up the sign when I factor", noteKind "thought", courseName "Algebra 2", dueAt null.',
-        "Filing only the task there would be wrong.",
-        "",
-        "Notes in detail:",
-        "- title is the thought written out in full and readable — not a summary, not a shortened label.",
-        "- noteKind 'idea' for something they might do; 'thought' for something they noticed, were told, or want to remember.",
-        "- A note about a class MUST carry its courseName; that is how it reaches the right class page.",
-        "",
-        "Dates:",
-        `- Now is ${ctx.now}. Local times are ${ctx.timezone}. Return every dueAt/startAt/endAt as an ISO-8601 UTC instant.`,
-        ctx.writtenAt
-          ? `- This text was written at ${ctx.writtenAt}. Resolve relative wording ("this Thursday", "next week") against THAT instant, not against now.`
-          : "- Resolve relative wording against now.",
-        "- When a weekday and a calendar date are both given, trust the calendar date.",
-        '- A bare weekday with no time means the end of that day, local. "after school" with no clock time means 3:30 PM local. An all-day item sets allDay true.',
-        "- Skip anything cancelled, or already past relative to now.",
-        "- Never invent a date. No date implied means dueAt null — normal and fine.",
-        "",
-        "Classes:",
-        `- Known classes: ${ctx.courses.join(", ") || "none"}.`,
-        ctx.teachers && ctx.teachers.length > 0
-          ? `- Who teaches what: ${ctx.teachers.join("; ")}. A teacher's name in the text tells you the class.`
-          : "",
-        '- Set courseName only to an exact class name from that list, otherwise null. Match loose wording to the real name: "fin lit" is Financial Lit, "bio" is Biology, "english" is English 9 H.',
-        "",
-        "Splitting further:",
-        "- One item per distinct thing. Three dates in one email is three items.",
-        "- A sign-up that gates a dated event is its own task, due just before that event starts.",
-        "- Do not split one thought into several notes.",
-        "",
-        "Task titles are short and action-first. Estimate a realistic duration in minutes for tasks. Quote the words each item came from in `evidence`.",
-        "Keep everything age-appropriate. Return an empty items array and say why in `note` only if there is genuinely nothing to file.",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-      input: text.slice(0, 8000),
-      text: {
-        format: {
-          type: "json_schema",
-          name: "captured_items",
-          strict: true,
-          schema: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              note: { type: ["string", "null"] },
-              items: {
-                type: "array",
+    const { value: response, skipped } = await withFallback((openai, rung) =>
+      openai.responses.create({
+        model: rung.model,
+        store: false,
+        safety_identifier: safetyIdentifier,
+        max_output_tokens: Math.min(2400, serverEnv.openaiMaxOutputTokens * 2),
+        instructions: [
+          "You sort whatever a 14-year-old ninth grader types or pastes into their planner. The input may be one line, a messy brain dump, a whole pasted email, or one or more images.",
+          images.length > 0
+            ? "Images are photos or screenshots of things like an assignment sheet, a whiteboard, a syllabus, a rubric, a calendar, or a message. Read everything legible in them and file it exactly as you would pasted text. Quote the words you read in `evidence`. If an image is unreadable, say so in `note` and file nothing from it."
+            : "",
+          "",
+          'FIRST, before anything else: break the input into every separate piece of meaning it contains, and file each one as its own item. Most inputs contain more than one. A single sentence joined by "and" is usually two items, and they are often different kinds — a deadline AND an observation about the work. Never merge two pieces into one item, and never drop the second half of what someone typed.',
+          "",
+          "Then give each piece a kind:",
+          "- 'task' — something to finish. Give it a dueAt when the text implies one.",
+          "- 'event' — something that happens at a time and place: a meeting, practice, shift, game.",
+          "- 'note' — a thought, an observation, something a teacher said, a question to ask, or an idea. It has NO date and never gets one. Use 'note' whenever a piece is about understanding or remembering rather than doing something by a deadline.",
+          "",
+          'Worked example. Input: "algebra pset due tues, and I keep messing up the sign when I factor"',
+          "Correct output: TWO items.",
+          '  1. task "Finish Algebra 2 problem set", courseName "Algebra 2", dueAt Tuesday.',
+          '  2. note "I keep messing up the sign when I factor", noteKind "thought", courseName "Algebra 2", dueAt null.',
+          "Filing only the task there would be wrong.",
+          "",
+          "Notes in detail:",
+          "- title is the thought written out in full and readable — not a summary, not a shortened label.",
+          "- noteKind 'idea' for something they might do; 'thought' for something they noticed, were told, or want to remember.",
+          "- A note about a class MUST carry its courseName; that is how it reaches the right class page.",
+          "",
+          "Dates:",
+          `- Now is ${ctx.now}. Local times are ${ctx.timezone}. Return every dueAt/startAt/endAt as an ISO-8601 UTC instant.`,
+          ctx.writtenAt
+            ? `- This text was written at ${ctx.writtenAt}. Resolve relative wording ("this Thursday", "next week") against THAT instant, not against now.`
+            : "- Resolve relative wording against now.",
+          "- When a weekday and a calendar date are both given, trust the calendar date.",
+          '- A bare weekday with no time means the end of that day, local. "after school" with no clock time means 3:30 PM local. An all-day item sets allDay true.',
+          "- Skip anything cancelled, or already past relative to now.",
+          "- Never invent a date. No date implied means dueAt null — normal and fine.",
+          "",
+          "Classes:",
+          `- Known classes: ${ctx.courses.join(", ") || "none"}.`,
+          ctx.teachers && ctx.teachers.length > 0
+            ? `- Who teaches what: ${ctx.teachers.join("; ")}. A teacher's name in the text tells you the class.`
+            : "",
+          '- Set courseName only to an exact class name from that list, otherwise null. Match loose wording to the real name: "fin lit" is Financial Lit, "bio" is Biology, "english" is English 9 H.',
+          "",
+          "Splitting further:",
+          "- One item per distinct thing. Three dates in one email is three items.",
+          "- A sign-up that gates a dated event is its own task, due just before that event starts.",
+          "- Do not split one thought into several notes.",
+          "",
+          "Task titles are short and action-first. Estimate a realistic duration in minutes for tasks. Quote the words each item came from in `evidence`.",
+          "Keep everything age-appropriate. Return an empty items array and say why in `note` only if there is genuinely nothing to file.",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        input: [{ role: "user", content }] as never,
+        text: {
+          format: {
+            type: "json_schema",
+            name: "captured_items",
+            strict: true,
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                note: { type: ["string", "null"] },
                 items: {
-                  type: "object",
-                  additionalProperties: false,
-                  properties: {
-                    kind: { type: "string", enum: ["task", "event", "note"] },
-                    title: { type: "string" },
-                    description: { type: ["string", "null"] },
-                    courseName: { type: ["string", "null"] },
-                    location: { type: ["string", "null"] },
-                    dueAt: { type: ["string", "null"] },
-                    startAt: { type: ["string", "null"] },
-                    endAt: { type: ["string", "null"] },
-                    allDay: { type: "boolean" },
-                    category: { type: "string", enum: ["school", "work", "personal"] },
-                    priority: { type: "string", enum: ["urgent", "high", "normal", "low"] },
-                    estimateMin: { type: "integer" },
-                    noteKind: { type: ["string", "null"], enum: ["thought", "idea", null] },
-                    evidence: { type: ["string", "null"] },
+                  type: "array",
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      kind: { type: "string", enum: ["task", "event", "note"] },
+                      title: { type: "string" },
+                      description: { type: ["string", "null"] },
+                      courseName: { type: ["string", "null"] },
+                      location: { type: ["string", "null"] },
+                      dueAt: { type: ["string", "null"] },
+                      startAt: { type: ["string", "null"] },
+                      endAt: { type: ["string", "null"] },
+                      allDay: { type: "boolean" },
+                      category: { type: "string", enum: ["school", "work", "personal"] },
+                      priority: { type: "string", enum: ["urgent", "high", "normal", "low"] },
+                      estimateMin: { type: "integer" },
+                      noteKind: { type: ["string", "null"], enum: ["thought", "idea", null] },
+                      evidence: { type: ["string", "null"] },
+                    },
+                    required: [
+                      "kind",
+                      "title",
+                      "description",
+                      "courseName",
+                      "location",
+                      "dueAt",
+                      "startAt",
+                      "endAt",
+                      "allDay",
+                      "category",
+                      "priority",
+                      "estimateMin",
+                      "noteKind",
+                      "evidence",
+                    ],
                   },
-                  required: [
-                    "kind",
-                    "title",
-                    "description",
-                    "courseName",
-                    "location",
-                    "dueAt",
-                    "startAt",
-                    "endAt",
-                    "allDay",
-                    "category",
-                    "priority",
-                    "estimateMin",
-                    "noteKind",
-                    "evidence",
-                  ],
                 },
               },
+              required: ["items", "note"],
             },
-            required: ["items", "note"],
           },
         },
-      },
-    });
+      }),
+    );
+    if (skipped.length > 0) {
+      console.warn("[capture] fell back", {
+        skipped: skipped.map((s) => `${s.rung.model}: ${s.reason}`),
+      });
+    }
 
     const raw = (response as { output_text?: string }).output_text;
     if (!raw)

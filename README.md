@@ -61,17 +61,17 @@ bun run test:e2e       # Playwright, builds and serves itself
 
 ## Signing in
 
-**Passcode** — the path that works on a school Chromebook, where third-party
-Google OAuth is blocked outright. The typed passcode is never the Supabase
-password: the server compares it against `APP_PASSCODE` in constant time,
-derives the account's real 48-character password as
-`HMAC(ACCOUNT_PASSWORD_SECRET, email)`, and exchanges that with Supabase for an
-ordinary session. Rate limited to 5 attempts a minute, which is what makes a
-short passcode acceptable. Run `bun run passcode:provision` once to set it.
+**One password.** The sign-in page is a single field. It works on a school
+Chromebook, where third-party Google OAuth is blocked outright. The typed
+password is never the Supabase password: the server compares it against
+`APP_PASSWORD` (alias `APP_PASSCODE`) in constant time, derives the account's
+real 48-character password as `HMAC(ACCOUNT_PASSWORD_SECRET, email)`, and
+exchanges that with Supabase for an ordinary session. Rate limited to 5
+attempts a minute, which is what makes a short password acceptable. Run
+`bun run passcode:provision` once to set it.
 
-**Continue with Google** — the normal path, through Supabase OAuth.
-
-**Demo mode** — an explicit choice on the sign-in page, never a silent
+**Continue with Google** appears only when the password is not configured on
+the server. **Demo mode** is a quiet link at the bottom, never a silent
 fallback.
 
 ---
@@ -109,16 +109,71 @@ CRON_SECRET  the same value as in Vercel
 
 ## What is connected
 
-| Provider                        | State                     | What it does                                                                       |
-| ------------------------------- | ------------------------- | ---------------------------------------------------------------------------------- |
-| **Wilcox calendars**            | On, no credentials        | School, district, athletics and counseling calendars, normalized and deduplicated.  |
-| **Santa Clara weather**         | On, no credentials        | Today's conditions from Open-Meteo.                                                 |
-| **Google Calendar + Classroom** | Needs an OAuth client     | Personal events, courses, coursework and your own submission state. **Read-only.**  |
-| **OpenAI**                      | Needs `OPENAI_API_KEY`    | Capture and Ask. Without the key both say so plainly and generate nothing.          |
+The Integrations page (avatar → Integrations, or `/integrations`) shows every
+app with its mark, its state, and the one action that changes it. Everything
+is read-only: the app never writes to another service.
 
-Every Google scope is read-only. The `calendar.events` write scope and the
-Gmail scope were both removed with the features that used them — which also
-means a school-managed account is reviewed against a much smaller ask.
+| Provider                | Needs                                  | What it does                                                                         |
+| ----------------------- | -------------------------------------- | ------------------------------------------------------------------------------------ |
+| **Wilcox calendars**    | nothing                                | School, district, athletics and counseling calendars, scraped, normalized, deduped.  |
+| **Santa Clara weather** | nothing                                | Today's conditions from Open-Meteo.                                                  |
+| **Google Classroom**    | OAuth client + Connect                 | Courses, coursework and your own submission state.                                   |
+| **Google Calendar**     | same connection                        | Personal events, next 45 days.                                                       |
+| **Gmail**               | same client + a separate Connect       | Recent mail (7 days, no promotions) into the Inbox. `gmail.readonly`, asked for only when you connect it. |
+| **Aeries**              | API certificate from the district      | The official gradebook: classes, teachers, periods, scores.                          |
+| **GitHub**              | `GITHUB_TOKEN`                         | Issues assigned to you, PRs waiting on you, your open PRs → Inbox.                   |
+| **Slack**               | `SLACK_USER_TOKEN`                     | Messages that mention you, and DMs, last 7 days → Inbox.                             |
+| **Notion**              | `NOTION_TOKEN`                         | Pages edited this week; open rows of `NOTION_TASKS_DATABASE_ID` → Inbox.             |
+| **Assistant**           | `OPENAI_API_KEY`                       | Capture and Ask. Without a key both say so plainly and generate nothing.             |
+
+**The Inbox.** Gmail, GitHub, Slack and Notion do not write tasks. They feed
+an Inbox panel on Today, each item with its source's mark. **File** sends the
+text through capture — which decides whether it is a task, an event or a note
+— and **Dismiss** makes it go away. The assistant can read the Inbox too
+(`list_inbox`), so "did anyone email me about the field trip" has an answer.
+
+Token-based providers (GitHub, Slack, Notion, Aeries) sync automatically with
+Wilcox and the weather. Google and Gmail sync only when you press Sync,
+because their consent can lapse and an unattended retry would error every
+five minutes.
+
+---
+
+## Images
+
+Drop a photo onto the capture box, paste a screenshot, or use the paperclip —
+a picture of the assignment sheet, the whiteboard, the rubric. The browser
+downscales it (longest edge 1600px, JPEG for photos, PNG for screenshots),
+the model reads it alongside whatever you typed, and the image is attached to
+every task and note it files. Thumbnails show on the row; tap one for the full
+picture.
+
+Bytes never live in a database row. A real account stores them in a private
+Supabase Storage bucket under the owner's id (signed URLs, one hour); a local
+or demo workspace keeps them in IndexedDB. Both need nothing from you, except
+that a Supabase project must have `supabase/migrations/0005_attachments.sql`
+applied — it adds the `attachments` column and the bucket with owner-only
+policies.
+
+---
+
+## The assistant never runs out
+
+Two things make that true.
+
+**No cap for you.** The AI endpoints verify the Supabase session the browser
+sends. A verified owner has no daily request cap (`OPENAI_DAILY_REQUEST_CAP`
+defaults to `0`, meaning none); only a caller with no session — demo mode, or
+a stranger who finds the endpoint — gets the small `OPENAI_GUEST_DAILY_CAP`.
+
+**A ladder, not a key.** Every call walks `key × model` rungs in order —
+`OPENAI_MODEL`, then `OPENAI_FALLBACK_MODELS`, then the same list on
+`OPENAI_API_KEY_FALLBACK` — and steps down on anything that is the
+provider's fault: a 429 rate limit, an exhausted quota, a 5xx, a model that
+key cannot use. One short retry on the same rung first, so a hiccup does not
+change the model mid-conversation. Three calls at most run at once, so a burst
+cannot trip a per-minute limit by itself. Set the spare key and the assistant
+keeps answering when the first account is out of credit.
 
 ---
 
@@ -130,9 +185,17 @@ fully without them.
 | Variable                    | Scope  | Purpose                                                          |
 | --------------------------- | ------ | ---------------------------------------------------------------- |
 | `OPENAI_API_KEY`            | server | Enables Capture and Ask.                                          |
+| `OPENAI_API_KEY_FALLBACK`   | server | A spare key on another account. What "never runs out" rests on.   |
 | `OPENAI_MODEL`              | server | Defaults to `gpt-5.6-terra`. See the note in `src/server/env.ts`. |
-| `OPENAI_MAX_OUTPUT_TOKENS`  | server | Per-response ceiling. Default `1800`.                             |
-| `OPENAI_DAILY_REQUEST_CAP`  | server | Spending guard: max calls per caller per UTC day.                 |
+| `OPENAI_FALLBACK_MODELS`    | server | Comma list tried after `OPENAI_MODEL`. Default `gpt-5.6-luna,gpt-5.6-sol`. |
+| `OPENAI_MAX_OUTPUT_TOKENS`  | server | Per-response ceiling. Default `1500`.                             |
+| `OPENAI_DAILY_REQUEST_CAP`  | server | Owner's daily stop. Default `0` = none.                           |
+| `OPENAI_GUEST_DAILY_CAP`    | server | Daily calls for a caller with no session. Default `40`.           |
+| `GITHUB_TOKEN`              | server | Fine-grained token, read-only on issues and pull requests.        |
+| `SLACK_USER_TOKEN`          | server | `xoxp-…` user token with `search:read` and `users:read`.          |
+| `NOTION_TOKEN`              | server | Internal integration secret; share pages with it in Notion.       |
+| `NOTION_TASKS_DATABASE_ID`  | server | Optional: a tasks database whose open rows feed the Inbox.        |
+| `AERIES_BASE_URL/CERT/…`    | server | District Aeries API certificate, school code and student id.      |
 | `SAFETY_IDENTIFIER_SALT`    | server | Salt for the hashed `safety_identifier` sent to OpenAI.           |
 | `VITE_SUPABASE_URL`         | client | Supabase project URL (public by design).                          |
 | `VITE_SUPABASE_ANON_KEY`    | client | Supabase anon key (public by design; RLS is the protection).      |
@@ -140,7 +203,7 @@ fully without them.
 | `GOOGLE_CLIENT_ID/SECRET`   | server | Google OAuth client.                                              |
 | `CRON_SECRET`               | server | Protects `/api/cron/sync`. Without it the endpoint returns 503.   |
 | `TOKEN_ENCRYPTION_KEY`      | server | AES-GCM key for the Google refresh token.                         |
-| `APP_PASSCODE`              | server | The short passcode typed on the sign-in page.                     |
+| `APP_PASSWORD`              | server | The one password typed on the sign-in page (`APP_PASSCODE` also works). |
 | `ACCOUNT_PASSWORD_SECRET`   | server | 32+ random chars. Derives each account's real Supabase password.  |
 
 Only the two `VITE_`-prefixed variables reach the browser. The production
@@ -156,7 +219,8 @@ supabase db push        # applies supabase/migrations/*
 ```
 
 Four tables carry the app: `tasks`, `courses`, `assignments`, `events`, plus
-`notes` for thoughts and ideas. Row Level Security is **enabled and forced** on
+`notes` for thoughts and ideas, and a private `attachments` storage bucket for
+images (`0005_attachments.sql`). Row Level Security is **enabled and forced** on
 every one, with an `auth.uid() = user_id` policy, and `anon` is revoked
 outright so it cannot read private rows even if a policy were dropped later.
 
@@ -175,7 +239,7 @@ src/
   lib/core/        domain types, time, ranking, schedule, normalization
   lib/repo/        Repository interface + local and Supabase implementations
   lib/compass/     assistant snapshot, typed tools, chat hook
-  server/          provider adapters, env, the OpenAI runtime — never imported by the client
+  server/          provider adapters, env, auth, the AI ladder and runtime — never imported by the client
 ```
 
 The UI only ever talks to the `Repository` interface, so browser storage and
@@ -198,7 +262,7 @@ decided when you typed it.
 ## Testing
 
 ```bash
-bun run test           # 264 unit + component tests
+bun run test           # 291 unit + component tests
 bun run test:e2e       # 12 end-to-end, across Chromebook / desktop / mobile
 ```
 

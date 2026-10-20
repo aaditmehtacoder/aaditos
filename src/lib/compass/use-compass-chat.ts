@@ -17,6 +17,7 @@ import type {
   CompassProposal,
   CompassToolName,
 } from "@/lib/compass/types";
+import { useInbox } from "@/lib/integrations/use-integrations";
 import { useOS } from "@/lib/store";
 
 /** Human label for each tool, shown while Compass is working. */
@@ -26,6 +27,7 @@ export const TOOL_LABEL: Record<CompassToolName, string> = {
   list_assignments: "Reading assignments",
   list_events: "Reading your calendar",
   list_notes: "Reading your notes",
+  list_inbox: "Reading your inbox",
   create_daily_plan: "Building a plan",
   find_schedule_conflicts: "Checking for conflicts",
   propose_task: "Drafting a task",
@@ -52,13 +54,14 @@ export interface CompassChat {
 
 export function useCompassChat(): CompassChat {
   const { workspace, isDemo, now } = useOS();
+  const { items: inbox } = useInbox();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [busy, setBusy] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const snapshot = useMemo(
-    () => buildSnapshot(workspace, now, { isDemo }),
-    [workspace, now, isDemo],
+    () => buildSnapshot(workspace, now, { isDemo, inbox }),
+    [workspace, now, isDemo, inbox],
   );
 
   // Abort any in-flight turn if the surface unmounts.

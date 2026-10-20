@@ -211,7 +211,7 @@ describe("SyncRequestSchema", () => {
   });
 
   it("rejects a provider that was removed", () => {
-    expect(SyncRequestSchema.safeParse({ providers: ["github"], userId: "u1" }).success).toBe(
+    expect(SyncRequestSchema.safeParse({ providers: ["spotify"], userId: "u1" }).success).toBe(
       false,
     );
   });

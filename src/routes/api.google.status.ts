@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { GMAIL_SCOPE } from "@/server/providers/gmail";
 import { GOOGLE_SCOPES, googleConfigured } from "@/server/providers/google";
 import { clearGoogleSession, encryptionReady, readGoogleSession } from "@/server/google-session";
 
@@ -28,6 +29,7 @@ export const Route = createFileRoute("/api/google/status")({
           connectedAt: session.connectedAt ?? null,
           scopes: granted,
           missingScopes: connected ? missingScopes(granted) : [],
+          gmail: connected && granted.includes(GMAIL_SCOPE),
         });
       },
       DELETE: async () => {

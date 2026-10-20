@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { identifyCaller, limitsFor } from "@/server/auth";
 import { captureItems } from "@/server/compass-runtime";
 import { callerKey, checkRateLimit } from "@/server/rate-limit";
 import { serverEnv } from "@/server/env";
@@ -47,7 +48,7 @@ export const Route = createFileRoute("/api/capture")({
           );
         }
 
-        if (!serverEnv.openaiApiKey) {
+        if (serverEnv.openaiApiKeys.length === 0) {
           return json(
             {
               ok: false,
@@ -58,17 +59,20 @@ export const Route = createFileRoute("/api/capture")({
           );
         }
 
-        const limit = checkRateLimit(callerKey(request, parsed.data.clientId), {
-          windowSec: 60,
-          max: 12,
-          dailyMax: serverEnv.openaiDailyRequestCap,
-        });
+        const caller = await identifyCaller(request, parsed.data.clientId);
+        const limit = checkRateLimit(
+          callerKey(request, caller.kind === "owner" ? `owner:${caller.id}` : caller.id),
+          limitsFor(caller),
+        );
         if (!limit.allowed) {
           return json(
             {
               ok: false,
-              code: "rate_limited",
-              message: `Too many requests. Try again in ${limit.retryAfterSec}s.`,
+              code: limit.reason === "daily" ? "daily_cap" : "rate_limited",
+              message:
+                limit.reason === "daily" && caller.kind === "guest"
+                  ? "Demo mode gets a few captures a day. Sign in for unlimited."
+                  : `Too many requests at once. Try again in ${limit.retryAfterSec}s.`,
             },
             429,
             { "retry-after": String(limit.retryAfterSec) },
@@ -81,6 +85,7 @@ export const Route = createFileRoute("/api/capture")({
           courses: parsed.data.courses,
           teachers: parsed.data.teachers,
           clientId: parsed.data.clientId,
+          images: parsed.data.images,
         });
 
         if (!result.ok) return json(result, 502);
@@ -106,10 +111,14 @@ export const Route = createFileRoute("/api/capture")({
             items,
             ...(dropped > 0 ? { dropped } : {}),
             ...(result.note ? { note: result.note } : {}),
-            remainingToday: limit.remaining,
+            remainingToday: Number.isFinite(limit.remaining) ? limit.remaining : null,
           },
           200,
-          { "x-ratelimit-remaining": String(limit.remaining) },
+          {
+            "x-ratelimit-remaining": Number.isFinite(limit.remaining)
+              ? String(limit.remaining)
+              : "unlimited",
+          },
         );
       },
     },

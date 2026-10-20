@@ -33,7 +33,12 @@ const SOURCE_RANK: Record<SourceId, number> = {
   wilcox: 100,
   google_classroom: 90,
   google_calendar: 80,
+  aeries: 75,
   manual: 70,
+  gmail: 60,
+  github: 50,
+  notion: 45,
+  slack: 40,
   demo: 1,
 };
 

@@ -1,6 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   BookOpen,
+  Cable,
   CloudOff,
   Home,
   LogOut,
@@ -24,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/lib/auth/context";
 import { relativeTimeLabel } from "@/lib/core/time";
+import { ALL_SYNCABLE } from "@/lib/integrations/contracts";
 import { useSync } from "@/lib/integrations/use-integrations";
 import { useOS } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -51,6 +53,7 @@ const TITLES: Record<string, string> = {
   "/classes": "Classes",
   "/ask": "Ask",
   "/settings": "Settings",
+  "/integrations": "Integrations",
 };
 
 function isActive(pathname: string, to: string): boolean {
@@ -81,9 +84,9 @@ function SyncButton() {
   return (
     <button
       type="button"
-      onClick={() => void sync(["wilcox", "weather", "google"])}
+      onClick={() => void sync(ALL_SYNCABLE)}
       disabled={busy || connection === "offline"}
-      title="Refresh classes, calendars and weather"
+      title="Refresh every connected app"
       className="flex items-center gap-1.5 rounded-[9px] px-2 py-1.5 text-[11.5px] text-muted-foreground transition-colors duration-150 hover:bg-secondary hover:text-foreground disabled:opacity-60"
     >
       {connection === "offline" ? (
@@ -168,6 +171,12 @@ function ProfileMenu() {
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />
+        <DropdownMenuItem asChild className="text-[12.5px]">
+          <Link to="/integrations">
+            <Cable className="size-[14px]" />
+            Integrations
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuItem asChild className="text-[12.5px]">
           <Link to="/settings">
             <Settings className="size-[14px]" />

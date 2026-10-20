@@ -1,5 +1,6 @@
 /** Browser-side helpers for talking to the Compass endpoints. */
 
+import { getSupabase } from "@/lib/auth/client";
 import { newId } from "@/lib/core/ids";
 import { TaskDraftSchema, type TaskDraft } from "@/lib/core/nl-task";
 import { APP_TZ } from "@/lib/core/time";
@@ -23,6 +24,24 @@ export function clientId(): string {
   }
 }
 
+/**
+ * The signed-in session's bearer token, if there is one.
+ *
+ * The AI endpoints give a verified owner the owner's limits (none) and a
+ * guest the guest's (small). Without this header every caller is a guest.
+ */
+export async function authHeaders(): Promise<Record<string, string>> {
+  try {
+    const supabase = getSupabase();
+    if (!supabase) return {};
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    return token ? { authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+}
+
 export interface StreamOptions {
   messages: CompassMessage[];
   snapshot: CompassSnapshot;
@@ -35,7 +54,7 @@ export async function streamCompass(opts: StreamOptions): Promise<void> {
   try {
     response = await fetch("/api/compass", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...(await authHeaders()) },
       body: JSON.stringify({
         messages: opts.messages,
         snapshot: opts.snapshot,

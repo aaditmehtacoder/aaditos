@@ -232,6 +232,7 @@ describe("TaskRow", () => {
     estimateMin: 5,
     source: "manual",
     subtasks: [],
+    attachments: [],
     position: 0,
     createdAt: NOW.toISOString(),
     updatedAt: NOW.toISOString(),

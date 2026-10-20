@@ -11,6 +11,7 @@ import { availableFocusMinutes } from "@/lib/core/priority";
 import { classEventsForDay, formatMin, nextClassFor, schoolDayStatus } from "@/lib/core/schedule";
 import { addDays, dateKey, minutesIntoDay, startOfDay } from "@/lib/core/time";
 import type { Workspace } from "@/lib/core/types";
+import type { InboxItem } from "@/lib/integrations/contracts";
 
 import type { CompassSnapshot } from "./types";
 
@@ -19,7 +20,7 @@ const HORIZON_DAYS = 14;
 export function buildSnapshot(
   workspace: Workspace,
   now: Date,
-  opts: { isDemo: boolean },
+  opts: { isDemo: boolean; inbox?: InboxItem[] | undefined },
 ): CompassSnapshot {
   const courseName = new Map(workspace.courses.map((c) => [c.id, c.name]));
 
@@ -63,6 +64,14 @@ export function buildSnapshot(
       nextClass: next ? `${next.course.name} at ${formatMin(next.slot.startMin)}` : undefined,
     },
     availableMin: focusWindow.totalMin,
+    inbox: (opts.inbox ?? []).slice(0, 60).map((i) => ({
+      id: i.id,
+      source: i.source,
+      title: i.title,
+      from: i.from,
+      detail: i.detail ? i.detail.slice(0, 200) : undefined,
+      at: i.at,
+    })),
     isDemo: opts.isDemo,
     courses: workspace.courses.filter((c) => c.active).map((c) => c.name),
     tasks: workspace.tasks

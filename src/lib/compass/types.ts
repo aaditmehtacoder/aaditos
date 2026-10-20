@@ -55,6 +55,16 @@ export interface CompactNote {
   madeIntoTask: boolean;
 }
 
+/** One thing from a connected app, as the assistant sees it. */
+export interface CompactInboxItem {
+  id: string;
+  source: string;
+  title: string;
+  from?: string | undefined;
+  detail?: string | undefined;
+  at: string;
+}
+
 export interface CompassSnapshot {
   now: string;
   timezone: string;
@@ -65,6 +75,8 @@ export interface CompassSnapshot {
   assignments: CompactAssignment[];
   events: CompactEvent[];
   notes: CompactNote[];
+  /** Emails, mentions, issues and pages from connected apps. Optional: empty when nothing is connected. */
+  inbox?: CompactInboxItem[] | undefined;
   courses: string[];
   isDemo: boolean;
 }
@@ -109,6 +121,7 @@ export type CompassToolName =
   | "list_assignments"
   | "list_events"
   | "list_notes"
+  | "list_inbox"
   | "create_daily_plan"
   | "find_schedule_conflicts"
   | "propose_task"

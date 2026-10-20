@@ -40,6 +40,7 @@ export const CompassSnapshotSchema = z
     assignments: z.array(z.record(z.unknown())).max(120),
     events: z.array(z.record(z.unknown())).max(160),
     notes: z.array(z.record(z.unknown())).max(80),
+    inbox: z.array(z.record(z.unknown())).max(80).optional(),
     courses: z.array(z.string().max(120)).max(20),
     isDemo: z.boolean(),
   })
@@ -55,14 +56,32 @@ export const CompassRequestSchema = z.object({
  * Capture accepts a whole pasted email, not just a typed line, so the ceiling
  * is generous — but still a ceiling, because the body is billed by the token.
  */
-export const CaptureRequestSchema = z.object({
-  text: z.string().min(2).max(8000),
-  courses: z.array(z.string().max(120)).max(20).default([]),
-  /** "Class — Teacher" pairs, so "Robson wants…" resolves to English 9 H. */
-  teachers: z.array(z.string().max(160)).max(20).default([]),
-  timezone: z.string().max(64).default("America/Los_Angeles"),
-  clientId: z.string().min(8).max(64),
-});
+/** A data URL for one image: png, jpeg, webp or gif, at most ~1.6 MB encoded. */
+export const ImageDataUrlSchema = z
+  .string()
+  .max(1_700_000)
+  .regex(/^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/, "Not an image data URL");
+
+export const CaptureRequestSchema = z
+  .object({
+    /** Optional when images are attached: a photo alone is enough to file. */
+    text: z.string().max(8000).default(""),
+    /** Up to four images. Vercel caps a request body at 4.5 MB, so the total is capped too. */
+    images: z.array(ImageDataUrlSchema).max(4).default([]),
+    courses: z.array(z.string().max(120)).max(20).default([]),
+    /** "Class — Teacher" pairs, so "Robson wants…" resolves to English 9 H. */
+    teachers: z.array(z.string().max(160)).max(20).default([]),
+    timezone: z.string().max(64).default("America/Los_Angeles"),
+    clientId: z.string().min(8).max(64),
+  })
+  .refine((v) => v.text.trim().length >= 2 || v.images.length > 0, {
+    message: "Type something or attach an image.",
+    path: ["text"],
+  })
+  .refine((v) => v.images.reduce((n, i) => n + i.length, 0) <= 4_000_000, {
+    message: "Images are too large together. Attach fewer or smaller ones.",
+    path: ["images"],
+  });
 
 /** One item the model filed. Re-validated here before it can reach the UI. */
 export const CapturedItemSchema = z.object({

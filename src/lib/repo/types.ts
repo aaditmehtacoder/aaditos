@@ -8,6 +8,7 @@
 
 import type {
   Assignment,
+  Attachment,
   CalendarEvent,
   Course,
   IntegrationRecord,
@@ -38,12 +39,23 @@ export interface TaskInput {
   externalUrl?: string | undefined;
   notes?: string | undefined;
   subtasks?: Array<{ title: string; done?: boolean }> | undefined;
+  /** Already stored through `putAttachment`; only the metadata is attached here. */
+  attachments?: Attachment[] | undefined;
 }
 
 export interface NoteInput {
   courseId?: UUID | undefined;
   kind?: NoteKind | undefined;
   body: string;
+  attachments?: Attachment[] | undefined;
+}
+
+/** What `putAttachment` needs beyond the bytes. */
+export interface AttachmentInput {
+  name: string;
+  mimeType: string;
+  width: number;
+  height: number;
 }
 
 export interface ImportResult {
@@ -74,6 +86,14 @@ export interface Repository {
   recordSyncRun(userId: UUID, run: SyncRun): Promise<void>;
 
   savePreferences(userId: UUID, prefs: UserPreferences): Promise<UserPreferences>;
+
+  /**
+   * Blob store for attachments. Bytes go in once; records carry the returned
+   * metadata; `attachmentUrl` turns it back into something an <img> can show.
+   */
+  putAttachment(userId: UUID, bytes: Blob, meta: AttachmentInput): Promise<Attachment>;
+  attachmentUrl(userId: UUID, attachment: Attachment): Promise<string>;
+  deleteAttachment(userId: UUID, attachment: Attachment): Promise<void>;
 
   exportWorkspace(userId: UUID): Promise<Workspace>;
   deleteAllData(userId: UUID): Promise<void>;

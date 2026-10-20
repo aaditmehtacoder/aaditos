@@ -1,6 +1,7 @@
 import { ExternalLink, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { AttachmentStrip } from "@/components/os/attachment-strip";
 import { PriorityDot, SourceTag, isExternalSource } from "@/components/os/primitives";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatDuration, formatTime, relativeDayLabel } from "@/lib/core/time";
@@ -105,6 +106,14 @@ export function TaskRow({ task, index }: { task: Task; index?: number }) {
           {isExternalSource(task.source) ? <SourceTag source={task.source} /> : null}
         </span>
       </button>
+
+      {task.attachments.length > 0 ? (
+        <AttachmentStrip
+          attachments={task.attachments}
+          target={{ kind: "task", id: task.id }}
+          className="col-start-2 mt-1.5 pl-[14px]"
+        />
+      ) : null}
 
       {/*
         Row actions reveal on hover for a trackpad, but a touchscreen has no

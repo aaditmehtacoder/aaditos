@@ -8,8 +8,35 @@
 
 import type { Assignment, CalendarEvent, Course } from "@/lib/core/types";
 
-export const SYNCABLE = ["wilcox", "google", "weather"] as const;
+export const SYNCABLE = [
+  "wilcox",
+  "google",
+  "weather",
+  "gmail",
+  "github",
+  "slack",
+  "notion",
+  "aeries",
+] as const;
 export type SyncProvider = (typeof SYNCABLE)[number];
+
+/**
+ * Providers that need no interactive consent and are safe to run on a timer.
+ * Google and Gmail depend on a consent that can lapse, and an unattended retry
+ * against a lapsed consent is a stream of identical errors — so they only run
+ * when a person presses Sync.
+ */
+export const AUTO_SYNCABLE: SyncProvider[] = [
+  "wilcox",
+  "weather",
+  "github",
+  "slack",
+  "notion",
+  "aeries",
+];
+
+/** Everything, for the Sync button. */
+export const ALL_SYNCABLE: SyncProvider[] = [...SYNCABLE];
 
 /**
  * Sync provider → the integration record id that carries its persisted status.
@@ -19,17 +46,58 @@ export const PROVIDER_INTEGRATION_IDS: Record<SyncProvider, string> = {
   wilcox: "wilcox",
   google: "google_calendar",
   weather: "weather",
+  gmail: "gmail",
+  github: "github",
+  slack: "slack",
+  notion: "notion",
+  aeries: "aeries",
 };
 
 /** Booleans only — never a key, token or secret. */
 export interface ProviderCapabilities {
   openai: boolean;
   openaiModel: string;
+  /** The fallback ladder, primary first. */
+  openaiModels: string[];
+  /** How many API keys are configured (1 = no spare). */
+  openaiKeys: number;
   google: boolean;
   supabase: boolean;
   cron: boolean;
+  github: boolean;
+  slack: boolean;
+  notion: boolean;
+  aeries: boolean;
   wilcox: true;
   weather: true;
+}
+
+/**
+ * Something from outside that might need action: an email, a Slack mention,
+ * a GitHub issue, a Notion page. The Inbox shows these with their source's
+ * mark; one click files the text through capture, which decides what it is.
+ */
+export interface InboxItem {
+  /** Stable across syncs, so a dismissed item stays dismissed. */
+  id: string;
+  source: "gmail" | "github" | "slack" | "notion";
+  title: string;
+  /** Snippet, body preview, or the page's parent. */
+  detail?: string | undefined;
+  /** Sender, author, or workspace. */
+  from?: string | undefined;
+  url?: string | undefined;
+  /** ISO instant the item was created or last changed. */
+  at: string;
+}
+
+export interface AeriesResult {
+  configured: boolean;
+  ok: boolean;
+  courses: Course[];
+  assignments: Assignment[];
+  fetchedAt?: string;
+  error?: string;
 }
 
 export interface WeatherResult {
@@ -100,6 +168,8 @@ export interface GoogleStatus {
    * distinguishes "needs reconnecting" from "broken".
    */
   missingScopes: string[];
+  /** True once the stored consent includes read-only Gmail. */
+  gmail: boolean;
 }
 
 export interface SyncPayload {
@@ -107,4 +177,7 @@ export interface SyncPayload {
   wilcox?: { events: CalendarEvent[]; calendarIds: string[]; duplicatesRemoved: number };
   google?: GoogleResult;
   weather?: WeatherResult;
+  aeries?: AeriesResult;
+  /** Merged from every inbox-producing provider, newest first. */
+  inbox?: InboxItem[];
 }

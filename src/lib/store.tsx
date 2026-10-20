@@ -27,6 +27,7 @@ import { mergeBySourceRef } from "@/lib/core/normalize";
 import { nowISO } from "@/lib/core/time";
 import type {
   Assignment,
+  Attachment,
   CalendarEvent,
   Course,
   IntegrationRecord,
@@ -40,7 +41,7 @@ import type {
 import { LocalRepository } from "@/lib/repo/local";
 import { emptyWorkspace } from "@/lib/repo/seed";
 import { SupabaseRepository } from "@/lib/repo/supabase";
-import type { NoteInput, Repository, TaskInput } from "@/lib/repo/types";
+import type { AttachmentInput, NoteInput, Repository, TaskInput } from "@/lib/repo/types";
 
 /**
  * Events the user captured or confirmed, kept on their own calendar so a
@@ -122,6 +123,19 @@ interface OSState {
    * used for synced records — see the import* methods above.
    */
   applyWorkspacePatch: (patch: Partial<Workspace>) => void;
+
+  /**
+   * Images. `putAttachment` stores the bytes and returns the metadata to put
+   * on a task or note; `attachmentUrl` turns that metadata back into a URL
+   * an <img> can show; `removeAttachment` takes one off a record and deletes
+   * the bytes.
+   */
+  putAttachment: (bytes: Blob, meta: AttachmentInput) => Promise<Attachment | null>;
+  attachmentUrl: (attachment: Attachment) => Promise<string>;
+  removeAttachment: (
+    target: { kind: "task" | "note"; id: string },
+    attachmentId: string,
+  ) => Promise<void>;
 
   exportWorkspace: () => Promise<Workspace>;
   deleteAllData: () => Promise<void>;
@@ -560,6 +574,69 @@ export function OSProvider({ children }: { children: ReactNode }) {
     setWorkspace((ws) => ({ ...ws, ...patch }));
   }, []);
 
+  // ---- attachments --------------------------------------------------------
+  const putAttachment = useCallback<OSState["putAttachment"]>(
+    async (bytes, meta) => {
+      const repo = repoRef.current;
+      if (!repo) return null;
+      try {
+        return await repo.putAttachment(userId, bytes, meta);
+      } catch (err) {
+        toast.error("Could not store the image", {
+          description: err instanceof Error ? err.message : "Please try again.",
+        });
+        return null;
+      }
+    },
+    [userId],
+  );
+
+  const attachmentUrl = useCallback<OSState["attachmentUrl"]>(
+    async (attachment) => {
+      const repo = repoRef.current;
+      if (!repo) throw new Error("No workspace loaded.");
+      return repo.attachmentUrl(userId, attachment);
+    },
+    [userId],
+  );
+
+  const removeAttachment = useCallback<OSState["removeAttachment"]>(
+    async (target, attachmentId) => {
+      const current = workspaceRef.current;
+      const record =
+        target.kind === "task"
+          ? current.tasks.find((t) => t.id === target.id)
+          : current.notes.find((n) => n.id === target.id);
+      const attachment = record?.attachments.find((a) => a.id === attachmentId);
+      if (!record || !attachment) return;
+      const remaining = record.attachments.filter((a) => a.id !== attachmentId);
+      await mutate({
+        label: "Remove image",
+        optimistic: (ws) =>
+          target.kind === "task"
+            ? {
+                ...ws,
+                tasks: ws.tasks.map((t) =>
+                  t.id === target.id ? { ...t, attachments: remaining } : t,
+                ),
+              }
+            : {
+                ...ws,
+                notes: ws.notes.map((n) =>
+                  n.id === target.id ? { ...n, attachments: remaining } : n,
+                ),
+              },
+        persist: async (repo, uid) => {
+          if (target.kind === "task")
+            await repo.updateTask(uid, target.id, { attachments: remaining });
+          else await repo.updateNote(uid, target.id, { attachments: remaining });
+          await repo.deleteAttachment(uid, attachment).catch(() => undefined);
+        },
+      });
+    },
+    [mutate],
+  );
+
   const exportWorkspace = useCallback<OSState["exportWorkspace"]>(async () => {
     const repo = repoRef.current;
     if (!repo) return workspace;
@@ -612,6 +689,9 @@ export function OSProvider({ children }: { children: ReactNode }) {
       importCourses,
       importAssignments,
       applyWorkspacePatch,
+      putAttachment,
+      attachmentUrl,
+      removeAttachment,
       exportWorkspace,
       deleteAllData,
       theme,
@@ -645,6 +725,9 @@ export function OSProvider({ children }: { children: ReactNode }) {
       importCourses,
       importAssignments,
       applyWorkspacePatch,
+      putAttachment,
+      attachmentUrl,
+      removeAttachment,
       exportWorkspace,
       deleteAllData,
       theme,

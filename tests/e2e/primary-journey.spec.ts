@@ -105,6 +105,7 @@ test.describe("primary journey", () => {
       ["/classes", /Classes/],
       ["/ask", /Ask/],
       ["/settings", /Settings/],
+      ["/integrations", /Integrations/],
     ] as const) {
       await page.goto(path);
       await expect(page.locator("h1")).toHaveCount(1);

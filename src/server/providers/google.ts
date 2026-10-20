@@ -53,12 +53,17 @@ export function googleConfigured(): boolean {
   return Boolean(serverEnv.googleClientId && serverEnv.googleClientSecret);
 }
 
-export function buildConsentUrl(opts: { redirectUri: string; state: string }): string {
+export function buildConsentUrl(opts: {
+  redirectUri: string;
+  state: string;
+  /** Opt-in scopes (Gmail) requested on top of the read-only base set. */
+  extraScopes?: string[] | undefined;
+}): string {
   const url = new URL(AUTH_ENDPOINT);
   url.searchParams.set("client_id", serverEnv.googleClientId ?? "");
   url.searchParams.set("redirect_uri", opts.redirectUri);
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", GOOGLE_SCOPES.join(" "));
+  url.searchParams.set("scope", [...GOOGLE_SCOPES, ...(opts.extraScopes ?? [])].join(" "));
   // offline + consent is what actually returns a refresh token.
   url.searchParams.set("access_type", "offline");
   url.searchParams.set("prompt", "consent");

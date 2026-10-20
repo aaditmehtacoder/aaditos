@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import type { CompassEvent } from "@/lib/compass/types";
+import { identifyCaller, limitsFor } from "@/server/auth";
 import { runCompassTurn } from "@/server/compass-runtime";
 import { callerKey, checkRateLimit } from "@/server/rate-limit";
 import { serverEnv } from "@/server/env";
@@ -44,7 +45,7 @@ export const Route = createFileRoute("/api/compass")({
           );
         }
 
-        if (!serverEnv.openaiApiKey) {
+        if (serverEnv.openaiApiKeys.length === 0) {
           return errorResponse(
             {
               type: "error",
@@ -56,11 +57,13 @@ export const Route = createFileRoute("/api/compass")({
           );
         }
 
-        const limit = checkRateLimit(callerKey(request, parsed.data.clientId), {
-          windowSec: 60,
-          max: 12,
-          dailyMax: serverEnv.openaiDailyRequestCap,
-        });
+        // The owner is never capped; a guest (demo mode, or a stranger who
+        // found the endpoint) gets a small daily allowance that protects the key.
+        const caller = await identifyCaller(request, parsed.data.clientId);
+        const limit = checkRateLimit(
+          callerKey(request, caller.kind === "owner" ? `owner:${caller.id}` : caller.id),
+          limitsFor(caller),
+        );
         if (!limit.allowed) {
           return errorResponse(
             {
@@ -68,8 +71,10 @@ export const Route = createFileRoute("/api/compass")({
               code: limit.reason === "daily" ? "daily_cap" : "rate_limited",
               message:
                 limit.reason === "daily"
-                  ? "Daily Compass request limit reached. It resets at midnight UTC."
-                  : `Too many requests. Try again in ${limit.retryAfterSec}s.`,
+                  ? caller.kind === "guest"
+                    ? "Demo mode gets a few questions a day. Sign in for unlimited."
+                    : "The daily request stop you configured was reached."
+                  : `Too many requests at once. Try again in ${limit.retryAfterSec}s.`,
               retryable: true,
             },
             429,

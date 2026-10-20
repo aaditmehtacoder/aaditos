@@ -44,8 +44,8 @@ interface AuthContextValue {
   error: string | null;
   supabaseConfigured: boolean;
   signInWithGoogle: () => Promise<void>;
-  /** Passcode sign-in — the path that works where Google OAuth is blocked. */
-  signInWithPasscode: (account: string, passcode: string) => Promise<boolean>;
+  /** Password sign-in — one field. `account` only matters if there is more than one. */
+  signInWithPasscode: (passcode: string, account?: string) => Promise<boolean>;
   enterDemoMode: () => void;
   signOut: () => Promise<void>;
   clearError: () => void;
@@ -186,10 +186,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * in the browser client so `onAuthStateChange` picks it up like any other
    * sign-in. The real Supabase password stays on the server.
    */
-  const signInWithPasscode = useCallback(async (account: string, passcode: string) => {
+  const signInWithPasscode = useCallback(async (passcode: string, account?: string) => {
     const supabase = getSupabase();
     if (!supabase) {
-      setError("Passcode sign-in needs VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
+      setError("Sign-in needs VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
       return false;
     }
     setError(null);
@@ -199,7 +199,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await fetch("/api/auth/passcode", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ account, passcode }),
+        body: JSON.stringify(account ? { account, passcode } : { passcode }),
       });
       payload = (await response.json()) as typeof payload;
     } catch {
@@ -208,7 +208,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     if (!payload.ok || !payload.accessToken || !payload.refreshToken) {
-      setError(payload.message ?? "Passcode sign-in failed.");
+      setError(payload.message ?? "Sign-in failed.");
       return false;
     }
 

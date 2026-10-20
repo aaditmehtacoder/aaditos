@@ -10,16 +10,17 @@ import {
 import { callerKey, checkRateLimit } from "@/server/rate-limit";
 
 /**
- * Passcode sign-in — the door that works on a school Chromebook, where
- * third-party Google OAuth is blocked outright.
+ * Password sign-in — one field, one button. Works on a school Chromebook,
+ * where third-party Google OAuth is blocked outright.
  *
- * GET  lists which accounts are reachable, so the sign-in page never has to
- *      hard-code them and can hide the whole panel when unconfigured.
- * POST trades { account, passcode } for a real Supabase session.
+ * GET  says whether it is configured (and lists accounts, for the rare case
+ *      there is more than one), so the page can show the right thing.
+ * POST trades { passcode } — `account` optional, defaulting to the main one —
+ *      for a real Supabase session.
  *
- * A three-character passcode is only safe behind a hard rate limit, so this is
- * capped at 5 attempts a minute and 40 a day per caller. The passcode itself is
- * compared in constant time and never logged.
+ * A short password is only safe behind a hard rate limit, so this is capped at
+ * 5 attempts a minute and 40 a day per caller. The password itself is compared
+ * in constant time and never logged.
  */
 export const Route = createFileRoute("/api/auth/passcode")({
   server: {
@@ -39,7 +40,7 @@ export const Route = createFileRoute("/api/auth/passcode")({
             {
               ok: false,
               message:
-                "Passcode sign-in is not configured. Set APP_PASSCODE and ACCOUNT_PASSWORD_SECRET, then run bun run passcode:provision.",
+                "Password sign-in is not configured. Set APP_PASSWORD and ACCOUNT_PASSWORD_SECRET, then run bun run passcode:provision.",
             },
             503,
           );
@@ -52,10 +53,17 @@ export const Route = createFileRoute("/api/auth/passcode")({
           return json({ ok: false, message: "Invalid JSON body" }, 400);
         }
 
-        const { account, passcode } = (body ?? {}) as { account?: unknown; passcode?: unknown };
-        if (typeof account !== "string" || typeof passcode !== "string") {
-          return json({ ok: false, message: "account and passcode are required" }, 422);
+        const { account, passcode, password } = (body ?? {}) as {
+          account?: unknown;
+          passcode?: unknown;
+          password?: unknown;
+        };
+        const typed = typeof passcode === "string" ? passcode : password;
+        if (typeof typed !== "string") {
+          return json({ ok: false, message: "A password is required." }, 422);
         }
+        const accountId =
+          typeof account === "string" && account ? account : PASSCODE_ACCOUNTS[0].id;
 
         const limit = checkRateLimit(callerKey(request, "passcode"), {
           windowSec: 60,
@@ -68,7 +76,7 @@ export const Route = createFileRoute("/api/auth/passcode")({
               ok: false,
               message:
                 limit.reason === "daily"
-                  ? "Too many passcode attempts today. Try again tomorrow or use Continue with Google."
+                  ? "Too many attempts today. Try again tomorrow."
                   : `Too many attempts. Wait ${limit.retryAfterSec}s.`,
             },
             429,
@@ -76,11 +84,11 @@ export const Route = createFileRoute("/api/auth/passcode")({
           );
         }
 
-        const target = accountFor(account);
+        const target = accountFor(accountId);
         if (!target) return json({ ok: false, message: "Unknown account" }, 422);
 
-        if (!(await passcodeMatches(passcode))) {
-          return json({ ok: false, message: "That passcode is not right." }, 401);
+        if (!(await passcodeMatches(typed))) {
+          return json({ ok: false, message: "That password is not right." }, 401);
         }
 
         try {

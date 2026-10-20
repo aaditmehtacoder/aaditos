@@ -16,6 +16,7 @@ import { getSupabase } from "@/lib/auth/client";
 import { nowISO } from "@/lib/core/time";
 import type {
   Assignment,
+  Attachment,
   CalendarEvent,
   Course,
   IntegrationRecord,
@@ -29,7 +30,10 @@ import type {
 } from "@/lib/core/types";
 
 import { defaultPreferences, seedCourses } from "./seed";
-import type { ImportResult, NoteInput, Repository, TaskInput } from "./types";
+import type { AttachmentInput, ImportResult, NoteInput, Repository, TaskInput } from "./types";
+
+/** Private bucket; `supabase/migrations/0005_attachments.sql` creates it with owner-only policies. */
+const BUCKET = "attachments";
 
 type Row = Record<string, unknown>;
 
@@ -149,6 +153,11 @@ export class SupabaseRepository implements Repository {
           position: i,
         })),
         position: 0,
+        // Sent only when present, so a database that has not run the
+        // attachments migration yet still accepts an ordinary task.
+        ...(input.attachments && input.attachments.length > 0
+          ? { attachments: input.attachments }
+          : {}),
       })
       .select()
       .single();
@@ -186,6 +195,9 @@ export class SupabaseRepository implements Repository {
         course_id: input.courseId ?? null,
         kind: input.kind ?? "thought",
         body: input.body.trim(),
+        ...(input.attachments && input.attachments.length > 0
+          ? { attachments: input.attachments }
+          : {}),
       })
       .select()
       .single();
@@ -200,6 +212,7 @@ export class SupabaseRepository implements Repository {
     if (patch.pinned !== undefined) row["pinned"] = patch.pinned;
     if (patch.courseId !== undefined) row["course_id"] = patch.courseId ?? null;
     if (patch.taskId !== undefined) row["task_id"] = patch.taskId ?? null;
+    if (patch.attachments !== undefined) row["attachments"] = patch.attachments;
     const { data, error } = await db
       .from("notes")
       .update(row)
@@ -360,12 +373,69 @@ export class SupabaseRepository implements Repository {
     return preferencesFromRow(check(data, error, "save preferences") as Row, userId);
   }
 
+  async putAttachment(userId: UUID, bytes: Blob, meta: AttachmentInput): Promise<Attachment> {
+    const db = this.db();
+    const id = crypto.randomUUID();
+    const ext = meta.mimeType === "image/png" ? "png" : "jpg";
+    // The first path segment is the owner's id — that is what the storage
+    // policy compares against auth.uid().
+    const path = `${userId}/${id}.${ext}`;
+    const { error } = await db.storage
+      .from(BUCKET)
+      .upload(path, bytes, { contentType: meta.mimeType, upsert: false });
+    if (error) {
+      throw new Error(
+        /not found|bucket/i.test(error.message)
+          ? "Image storage is not set up yet. Apply supabase/migrations/0005_attachments.sql."
+          : `upload image: ${error.message}`,
+      );
+    }
+    return {
+      id,
+      kind: "image",
+      name: meta.name,
+      mimeType: meta.mimeType,
+      size: bytes.size,
+      width: meta.width,
+      height: meta.height,
+      ref: `storage:${path}`,
+      createdAt: nowISO(),
+    };
+  }
+
+  private signed = new Map<string, { url: string; until: number }>();
+
+  async attachmentUrl(_userId: UUID, attachment: Attachment): Promise<string> {
+    const cached = this.signed.get(attachment.ref);
+    if (cached && cached.until > Date.now()) return cached.url;
+    const path = attachment.ref.replace(/^storage:/, "");
+    const ttl = 60 * 60;
+    const { data, error } = await this.db().storage.from(BUCKET).createSignedUrl(path, ttl);
+    if (error || !data?.signedUrl) throw new Error(`load image: ${error?.message ?? "no url"}`);
+    this.signed.set(attachment.ref, { url: data.signedUrl, until: Date.now() + (ttl - 60) * 1000 });
+    return data.signedUrl;
+  }
+
+  async deleteAttachment(_userId: UUID, attachment: Attachment): Promise<void> {
+    this.signed.delete(attachment.ref);
+    const path = attachment.ref.replace(/^storage:/, "");
+    await this.db().storage.from(BUCKET).remove([path]);
+  }
+
   async exportWorkspace(userId: UUID): Promise<Workspace> {
     return this.loadWorkspace(userId);
   }
 
   async deleteAllData(userId: UUID): Promise<void> {
     const db = this.db();
+    // Images first; they are not rows and no cascade reaches them.
+    try {
+      const { data } = await db.storage.from(BUCKET).list(userId, { limit: 1000 });
+      const paths = (data ?? []).map((f) => `${userId}/${f.name}`);
+      if (paths.length > 0) await db.storage.from(BUCKET).remove(paths);
+    } catch {
+      /* no bucket yet — nothing to remove */
+    }
     // Notes reference courses and tasks, so they go first; the rest are
     // independent of each other.
     const tables = [
@@ -437,6 +507,7 @@ function taskFromRow(row: Row): Task {
     externalUrl: opt(row, "external_url"),
     notes: opt(row, "notes"),
     subtasks: arr<Task["subtasks"][number]>(row, "subtasks"),
+    attachments: arr<Attachment>(row, "attachments"),
     position: num(row, "position"),
     completedAt: opt(row, "completed_at"),
     createdAt: str(row, "created_at"),
@@ -461,6 +532,7 @@ function taskToRow(patch: Partial<Task>): Row {
   if (patch.notes !== undefined) row["notes"] = patch.notes ?? null;
   if (patch.externalUrl !== undefined) row["external_url"] = patch.externalUrl ?? null;
   if (patch.subtasks !== undefined) row["subtasks"] = patch.subtasks;
+  if (patch.attachments !== undefined) row["attachments"] = patch.attachments;
   if (patch.position !== undefined) row["position"] = patch.position;
   if (patch.completedAt !== undefined) row["completed_at"] = patch.completedAt ?? null;
   return row;
@@ -535,6 +607,7 @@ function noteFromRow(row: Row): Note {
     body: str(row, "body"),
     taskId: opt(row, "task_id"),
     pinned: bool(row, "pinned"),
+    attachments: arr<Attachment>(row, "attachments"),
     createdAt: str(row, "created_at"),
     updatedAt: str(row, "updated_at"),
   };

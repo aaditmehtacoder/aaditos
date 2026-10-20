@@ -17,9 +17,53 @@ function read(name: string): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+/** Comma- or newline-separated list, trimmed, empties dropped, order kept. */
+function readList(name: string): string[] {
+  const raw = read(name);
+  if (!raw) return [];
+  return [
+    ...new Set(
+      raw
+        .split(/[,\n]/)
+        .map((v) => v.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
 export const serverEnv = {
   get openaiApiKey(): string | undefined {
     return read("OPENAI_API_KEY");
+  },
+  /**
+   * Every key the assistant may use, primary first.
+   *
+   * `OPENAI_API_KEY` is the one that normally answers. `OPENAI_API_KEY_FALLBACK`
+   * (or a comma-separated `OPENAI_API_KEYS`) is a spare on a different account
+   * or project: when the primary hits a hard quota or rate limit the request
+   * moves to the next key instead of failing. "Never runs out" is only true
+   * with two keys, which is why the second one exists.
+   */
+  get openaiApiKeys(): string[] {
+    const keys = [
+      read("OPENAI_API_KEY"),
+      read("OPENAI_API_KEY_FALLBACK"),
+      ...readList("OPENAI_API_KEYS"),
+    ];
+    return [...new Set(keys.filter((k): k is string => Boolean(k)))];
+  },
+  /**
+   * The models to try, in order. The configured model first; then the
+   * fallbacks, which answer when the first is rate limited or unavailable.
+   * A cheaper model with headroom beats no answer at all.
+   */
+  get openaiModels(): string[] {
+    const fallbacks = readList("OPENAI_FALLBACK_MODELS");
+    const chain = [
+      serverEnv.openaiModel,
+      ...(fallbacks.length > 0 ? fallbacks : ["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"]),
+    ];
+    return [...new Set(chain)];
   },
   /**
    * The one model, used for both answering and filing.
@@ -52,19 +96,22 @@ export const serverEnv = {
     return Math.min(value, 4000);
   },
   /**
-   * The real spending guard: total AI requests per caller per UTC day, shared
-   * across Compass, quick-add and email extraction.
-   *
-   * 120 is deliberately generous for one student and still bounded — nothing in
-   * the app calls the model on a timer, so reaching this at all means either a
-   * genuinely heavy day or a bug, and both are worth stopping. Hard-capped at
-   * 1000 so a misconfigured value cannot remove the guard entirely.
+   * Daily AI request ceiling for the signed-in owner. `0` (the default) means
+   * none: the owner never runs into a cap. Set a number only if you want a
+   * hard spending stop for a runaway bug. Callers without a session — demo
+   * mode, or a stranger who finds the endpoint — get `openaiGuestDailyCap`
+   * instead, which is what actually protects the key.
    */
   get openaiDailyRequestCap(): number {
     const raw = read("OPENAI_DAILY_REQUEST_CAP");
     const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-    const value = Number.isFinite(parsed) && parsed > 0 ? parsed : 120;
-    return Math.min(value, 1000);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  },
+  /** Daily AI requests for callers with no verified session. Small on purpose. */
+  get openaiGuestDailyCap(): number {
+    const raw = read("OPENAI_GUEST_DAILY_CAP");
+    const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 40;
   },
   get safetyIdentifierSalt(): string {
     return read("SAFETY_IDENTIFIER_SALT") ?? "aaditos-local-salt";
@@ -117,6 +164,18 @@ export const serverEnv = {
   get aeriesPathGrades(): string | undefined {
     return read("AERIES_PATH_GRADES");
   },
+  /** Slack user token (xoxp-…) with `search:read` and `users:read`. */
+  get slackUserToken(): string | undefined {
+    return read("SLACK_USER_TOKEN") ?? read("SLACK_TOKEN");
+  },
+  /** Notion internal integration secret (ntn_… / secret_…). */
+  get notionToken(): string | undefined {
+    return read("NOTION_TOKEN") ?? read("NOTION_API_KEY");
+  },
+  /** Optional: a Notion database of tasks to pull open rows from. */
+  get notionTasksDatabaseId(): string | undefined {
+    return read("NOTION_TASKS_DATABASE_ID");
+  },
   get cronSecret(): string | undefined {
     return read("CRON_SECRET");
   },
@@ -132,9 +191,9 @@ export const serverEnv = {
   get supabaseAnonKey(): string | undefined {
     return read("SUPABASE_ANON_KEY") ?? read("VITE_SUPABASE_ANON_KEY");
   },
-  /** The short passcode typed on the sign-in page. Never a Supabase password. */
+  /** The one password typed on the sign-in page. Never a Supabase password. `APP_PASSWORD` is an alias. */
   get appPasscode(): string | undefined {
-    return read("APP_PASSCODE");
+    return read("APP_PASSCODE") ?? read("APP_PASSWORD");
   },
   /** Derives each account's real Supabase password. Rotating this locks everyone out until reprovisioned. */
   get accountPasswordSecret(): string | undefined {
@@ -144,11 +203,17 @@ export const serverEnv = {
 
 export function providerCapabilities(): ProviderCapabilities {
   return {
-    openai: Boolean(serverEnv.openaiApiKey),
+    openai: serverEnv.openaiApiKeys.length > 0,
     openaiModel: serverEnv.openaiModel,
+    openaiModels: serverEnv.openaiModels,
+    openaiKeys: serverEnv.openaiApiKeys.length,
     google: Boolean(serverEnv.googleClientId && serverEnv.googleClientSecret),
     supabase: Boolean(serverEnv.supabaseUrl && serverEnv.supabaseAnonKey),
     cron: Boolean(serverEnv.cronSecret),
+    github: Boolean(serverEnv.githubToken),
+    slack: Boolean(serverEnv.slackUserToken),
+    notion: Boolean(serverEnv.notionToken),
+    aeries: Boolean(serverEnv.aeriesBaseUrl && serverEnv.aeriesCert && serverEnv.aeriesStudentId),
     wilcox: true,
     weather: true,
   };

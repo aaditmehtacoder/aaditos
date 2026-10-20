@@ -39,7 +39,9 @@ export default defineConfig({
     ? {}
     : {
         webServer: {
-          command: `bun run build && PORT=${PORT} bun run start`,
+          // build:node, not build: the default build targets Vercel and writes to
+          // .vercel/output, while `start` serves .output — which went stale.
+          command: `bun run build:node && PORT=${PORT} bun run start`,
           url: BASE_URL,
           reuseExistingServer: !process.env["CI"],
           timeout: 240_000,

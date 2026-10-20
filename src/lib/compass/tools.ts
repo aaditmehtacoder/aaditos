@@ -58,6 +58,7 @@ export const READ_TOOL_NAMES = [
   "list_assignments",
   "list_events",
   "list_notes",
+  "list_inbox",
   "create_daily_plan",
   "find_schedule_conflicts",
 ] as const satisfies readonly CompassToolName[];
@@ -138,6 +139,17 @@ export const COMPASS_TOOLS: ToolDefinition[] = [
     parameters: object({
       courseName: nullable("string"),
       kind: nullable("string", { enum: ["thought", "idea", null] }),
+      limit: nullable("integer", { minimum: 1, maximum: 40 }),
+    }),
+  },
+  {
+    type: "function",
+    name: "list_inbox",
+    description:
+      "What arrived from connected apps and has not been filed: recent emails (Gmail), Slack mentions, GitHub issues and pull requests, Notion pages. Read this when asked about mail, messages, code work, or anything 'someone sent'.",
+    strict: true,
+    parameters: object({
+      source: nullable("string", { enum: ["gmail", "slack", "github", "notion", null] }),
       limit: nullable("integer", { minimum: 1, maximum: 40 }),
     }),
   },
@@ -281,6 +293,14 @@ export function runTool(
         return true;
       });
       return { data: { notes: filtered.slice(0, limit), total: filtered.length } };
+    }
+
+    case "list_inbox": {
+      const source = str(args, "source");
+      const limit = int(args, "limit") ?? 20;
+      const all = snap.inbox ?? [];
+      const filtered = source ? all.filter((i) => i.source === source) : all;
+      return { data: { items: filtered.slice(0, limit), total: filtered.length } };
     }
 
     case "create_daily_plan":

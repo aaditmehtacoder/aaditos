@@ -15,8 +15,10 @@ import { newId } from "@/lib/core/ids";
 import { mergeBySourceRef, normalizeEvent } from "@/lib/core/normalize";
 import type { CalendarEvent, IntegrationRecord, SyncRun } from "@/lib/core/types";
 import { PROVIDER_INTEGRATION_IDS } from "@/lib/integrations/contracts";
+import { authHeaders } from "@/lib/compass/client";
 import { useOS } from "@/lib/store";
 import type {
+  InboxItem,
   ProviderCapabilities,
   SyncPayload,
   SyncProvider,
@@ -90,6 +92,64 @@ export interface SyncState {
   error: string | null;
 }
 
+export const INBOX_KEY = ["inbox"] as const;
+
+/**
+ * The merged Inbox from the last sync, kept in the query cache.
+ *
+ * Deliberately not persisted: these items belong to Gmail, GitHub, Slack and
+ * Notion, and the next sync is the source of truth. What *is* remembered is
+ * which ones were dismissed, in localStorage, so a sync never brings back
+ * something you already dealt with.
+ */
+export function useInbox(): { items: InboxItem[]; dismiss: (id: string) => void } {
+  const queryClient = useQueryClient();
+  const { data } = useQuery<InboxItem[]>({
+    queryKey: INBOX_KEY,
+    queryFn: () => [],
+    staleTime: Infinity,
+    gcTime: Infinity,
+    enabled: false,
+    initialData: [],
+  });
+  const [dismissed, setDismissed] = useState<Set<string>>(() => readDismissed());
+  const dismiss = useCallback(
+    (id: string) => {
+      setDismissed((prev) => {
+        const next = new Set(prev);
+        next.add(id);
+        writeDismissed(next);
+        return next;
+      });
+      queryClient.setQueryData<InboxItem[]>(INBOX_KEY, (prev) =>
+        (prev ?? []).filter((i) => i.id !== id),
+      );
+    },
+    [queryClient],
+  );
+  return { items: (data ?? []).filter((i) => !dismissed.has(i.id)), dismiss };
+}
+
+const DISMISSED_KEY = "aaditos:inbox-dismissed";
+
+function readDismissed(): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(DISMISSED_KEY);
+    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeDismissed(ids: Set<string>): void {
+  try {
+    // Keep the newest few hundred; an id never seen again is dead weight.
+    window.localStorage.setItem(DISMISSED_KEY, JSON.stringify([...ids].slice(-400)));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
 /** Replace rows that share a `sourceRef`, keep everything else untouched. */
 export function useSync() {
   const {
@@ -115,7 +175,7 @@ export function useSync() {
       try {
         const response = await fetch("/api/sync", {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", ...(await authHeaders()) },
           body: JSON.stringify({ providers, userId }),
         });
 
@@ -145,11 +205,29 @@ export function useSync() {
           }
         }
 
+        if (payload.aeries?.ok) {
+          if (payload.aeries.courses.length > 0) {
+            await importCourses(payload.aeries.courses.map((c) => ({ ...c, userId })));
+          }
+          if (payload.aeries.assignments.length > 0) {
+            await importAssignments(payload.aeries.assignments.map((a) => ({ ...a, userId })));
+          }
+        }
+
         for (const run of payload.runs) {
           await applyRun(run);
         }
 
         queryClient.setQueryData(SYNC_PAYLOAD_KEY, payload);
+        if (payload.inbox) {
+          // Merge rather than replace: a sync of only some providers must not
+          // empty the items the others produced last time.
+          const synced = new Set(providers);
+          queryClient.setQueryData<InboxItem[]>(INBOX_KEY, (prev) => {
+            const kept = (prev ?? []).filter((i) => !synced.has(i.source));
+            return [...(payload.inbox ?? []), ...kept].sort((a, b) => b.at.localeCompare(a.at));
+          });
+        }
         setState({ running: false, error: null });
         return payload;
       } catch (error) {

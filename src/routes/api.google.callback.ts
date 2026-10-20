@@ -39,10 +39,14 @@ export const Route = createFileRoute("/api/google/callback")({
             code,
             redirectUri: googleRedirectUri(request),
           });
+          // `include_granted_scopes` means a Gmail consent comes back with the
+          // calendar scopes too, but merging guards against a client without it.
+          const held = new Set([...(session.scope ?? "").split(" "), ...tokens.scope.split(" ")]);
+          held.delete("");
           await writeGoogleSession({
             refreshToken: tokens.refreshToken,
             email: tokens.email,
-            scope: tokens.scope,
+            scope: [...held].join(" "),
             connectedAt: new Date().toISOString(),
             oauthState: undefined,
           });

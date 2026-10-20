@@ -27,12 +27,12 @@
 
 import { useCallback, useEffect, useRef } from "react";
 
-import type { SyncProvider } from "@/lib/integrations/contracts";
+import { AUTO_SYNCABLE } from "@/lib/integrations/contracts";
 import { useSync } from "@/lib/integrations/use-integrations";
 import { useOS } from "@/lib/store";
 
-/** Public data only — nothing here can need an interactive consent. */
-const AUTO_PROVIDERS: SyncProvider[] = ["wilcox", "weather"];
+/** Token-based or public — nothing here can need an interactive consent. */
+const AUTO_PROVIDERS = AUTO_SYNCABLE;
 
 /**
  * Five minutes, not thirty.

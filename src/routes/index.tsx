@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowRight, CalendarClock, CheckCircle2, Lightbulb } from "lucide-react";
 
 import { CaptureBar } from "@/components/os/capture-bar";
+import { Inbox } from "@/components/os/inbox";
 import { EmptyState, Panel, PanelHeader, Pill, RowSkeleton } from "@/components/os/primitives";
 import { TaskRow } from "@/components/os/task-row";
 import { WeatherGlyph } from "@/components/os/weather-glyph";
@@ -334,6 +335,7 @@ function TodayPage() {
         </div>
         <div className="min-w-0 space-y-4">
           <ComingUp />
+          <Inbox />
           <RecentNotes />
         </div>
       </div>

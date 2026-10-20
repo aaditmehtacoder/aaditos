@@ -4,11 +4,14 @@ import { afterEach, vi } from "vitest";
 
 afterEach(() => {
   cleanup();
-  window.localStorage.clear();
+  if (typeof window !== "undefined") window.localStorage.clear();
 });
 
+// Server-only suites opt into the node environment, where there is no window.
+const browser = typeof window !== "undefined";
+
 // jsdom does not implement these; several components depend on them.
-if (!window.matchMedia) {
+if (browser && !window.matchMedia) {
   window.matchMedia = ((query: string) => ({
     matches: false,
     media: query,
@@ -21,7 +24,7 @@ if (!window.matchMedia) {
   })) as unknown as typeof window.matchMedia;
 }
 
-if (!window.ResizeObserver) {
+if (browser && !window.ResizeObserver) {
   window.ResizeObserver = class {
     observe() {}
     unobserve() {}
@@ -29,7 +32,7 @@ if (!window.ResizeObserver) {
   } as unknown as typeof ResizeObserver;
 }
 
-if (!Element.prototype.scrollIntoView) {
+if (browser && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = vi.fn();
 }
 

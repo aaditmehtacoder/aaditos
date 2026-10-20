@@ -10,6 +10,7 @@ import { newId, stableId } from "@/lib/core/ids";
 import { nowISO } from "@/lib/core/time";
 import type {
   Assignment,
+  Attachment,
   CalendarEvent,
   Course,
   IntegrationRecord,
@@ -22,8 +23,9 @@ import type {
   Workspace,
 } from "@/lib/core/types";
 
+import { clearBlobsWithPrefix, deleteBlob, getBlob, putBlob } from "./blobs";
 import { defaultPreferences, emptyWorkspace, seedWorkspace } from "./seed";
-import type { ImportResult, NoteInput, Repository, TaskInput } from "./types";
+import type { AttachmentInput, ImportResult, NoteInput, Repository, TaskInput } from "./types";
 
 const SCHEMA_VERSION = 1;
 const KEY_PREFIX = "aaditos:v1:workspace:";
@@ -80,6 +82,15 @@ export class LocalRepository implements Repository {
           const parsed = JSON.parse(raw) as Persisted;
           if (parsed && parsed.version === SCHEMA_VERSION && parsed.workspace) {
             workspace = { ...parsed.workspace, profile };
+            // Records written before attachments existed have no such field.
+            workspace.tasks = workspace.tasks.map((t) => ({
+              ...t,
+              attachments: t.attachments ?? [],
+            }));
+            workspace.notes = workspace.notes.map((n) => ({
+              ...n,
+              attachments: n.attachments ?? [],
+            }));
           }
         }
       } catch {
@@ -155,6 +166,7 @@ export class LocalRepository implements Repository {
         done: s.done ?? false,
         position: i,
       })),
+      attachments: input.attachments ?? [],
       position: ws.tasks.length ? Math.min(...ws.tasks.map((t) => t.position)) - 1 : 0,
       createdAt: now,
       updatedAt: now,
@@ -194,6 +206,7 @@ export class LocalRepository implements Repository {
       body: input.body.trim(),
       taskId: undefined,
       pinned: false,
+      attachments: input.attachments ?? [],
       createdAt: now,
       updatedAt: now,
     };
@@ -275,6 +288,45 @@ export class LocalRepository implements Repository {
     return structuredCopy(ws.preferences);
   }
 
+  async putAttachment(userId: UUID, bytes: Blob, meta: AttachmentInput): Promise<Attachment> {
+    const id = newId();
+    const key = `${userId}:${id}`;
+    await putBlob(key, bytes);
+    return {
+      id,
+      kind: "image",
+      name: meta.name,
+      mimeType: meta.mimeType,
+      size: bytes.size,
+      width: meta.width,
+      height: meta.height,
+      ref: `idb:${key}`,
+      createdAt: nowISO(),
+    };
+  }
+
+  private urls = new Map<string, string>();
+
+  async attachmentUrl(_userId: UUID, attachment: Attachment): Promise<string> {
+    const cached = this.urls.get(attachment.ref);
+    if (cached) return cached;
+    const key = attachment.ref.replace(/^idb:/, "");
+    const blob = await getBlob(key);
+    if (!blob) throw new Error("That image is no longer stored on this device.");
+    const url = URL.createObjectURL(blob);
+    this.urls.set(attachment.ref, url);
+    return url;
+  }
+
+  async deleteAttachment(_userId: UUID, attachment: Attachment): Promise<void> {
+    const url = this.urls.get(attachment.ref);
+    if (url) {
+      URL.revokeObjectURL(url);
+      this.urls.delete(attachment.ref);
+    }
+    await deleteBlob(attachment.ref.replace(/^idb:/, "")).catch(() => undefined);
+  }
+
   async exportWorkspace(userId: UUID): Promise<Workspace> {
     return structuredCopy(this.read(userId));
   }
@@ -282,6 +334,7 @@ export class LocalRepository implements Repository {
   async deleteAllData(userId: UUID): Promise<void> {
     this.cache.delete(userId);
     if (hasStorage()) window.localStorage.removeItem(this.key(userId));
+    await clearBlobsWithPrefix(`${userId}:`).catch(() => undefined);
     const fresh = emptyWorkspace(userId, this.profileFor(userId));
     this.cache.set(userId, fresh);
     this.write(userId);

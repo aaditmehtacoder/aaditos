@@ -168,14 +168,22 @@ export function seedTasks(userId: UUID, now: Date): Task[] {
     n: number,
     partial: Omit<
       Task,
-      "id" | "userId" | "position" | "createdAt" | "updatedAt" | "subtasks" | "dueAllDay"
+      | "id"
+      | "userId"
+      | "position"
+      | "createdAt"
+      | "updatedAt"
+      | "subtasks"
+      | "dueAllDay"
+      | "attachments"
     > &
-      Partial<Pick<Task, "subtasks" | "dueAllDay">>,
+      Partial<Pick<Task, "subtasks" | "dueAllDay" | "attachments">>,
   ): Task => ({
     id: stableId(`task:${n}`),
     userId,
     position: n,
     subtasks: [],
+    attachments: [],
     dueAllDay: false,
     createdAt: iso,
     updatedAt: iso,
@@ -576,6 +584,7 @@ export function seedNotes(userId: UUID, now: Date): Note[] {
     body: def.body,
     taskId: undefined,
     pinned: false,
+    attachments: [],
     createdAt: iso,
     updatedAt: iso,
   }));

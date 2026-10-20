@@ -32,6 +32,7 @@ function task(partial: Partial<Task> & { id: string; title: string }): Task {
     estimateMin: 30,
     source: "manual",
     subtasks: [],
+    attachments: [],
     position: 0,
     createdAt: NOW.toISOString(),
     updatedAt: NOW.toISOString(),
