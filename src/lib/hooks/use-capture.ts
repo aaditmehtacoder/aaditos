@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import { authHeaders, clientId } from "@/lib/compass/client";
 import { APP_TZ } from "@/lib/core/time";
 import type { Attachment, NoteKind } from "@/lib/core/types";
-import { blobToDataUrl, type PreparedImage } from "@/lib/repo/blobs";
+import { MAX_UPLOAD_CHARS, blobToDataUrl, type PreparedImage } from "@/lib/repo/blobs";
 import { useOS } from "@/lib/store";
 
 export interface CapturedItem {
@@ -67,13 +67,23 @@ export function useCapture() {
         note?: string;
         message?: string;
       };
+      const dataUrls = await Promise.all(images.map((i) => blobToDataUrl(i.blob)));
+      // Checked here so the failure is a sentence, not a bare 413 from the host.
+      if (dataUrls.reduce((n, d) => n + d.length, 0) > MAX_UPLOAD_CHARS) {
+        toast.error("Those images are too large together", {
+          description: "Attach fewer at a time.",
+        });
+        return failed;
+      }
+
+      let response: Response;
       try {
-        const response = await fetch("/api/capture", {
+        response = await fetch("/api/capture", {
           method: "POST",
           headers: { "content-type": "application/json", ...(await authHeaders()) },
           body: JSON.stringify({
             text,
-            images: await Promise.all(images.map((i) => blobToDataUrl(i.blob))),
+            images: dataUrls,
             courses: workspace.courses.filter((c) => c.active).map((c) => c.name),
             // A note usually names the teacher, not the subject: "Robson wants
             // the thesis arguable" only reaches the English page if the server
@@ -85,9 +95,23 @@ export function useCapture() {
             clientId: clientId(),
           }),
         });
-        payload = (await response.json()) as typeof payload;
       } catch {
         toast.error("Could not reach the server", { description: "Check your connection." });
+        return failed;
+      }
+      try {
+        payload = (await response.json()) as typeof payload;
+      } catch {
+        // Not our JSON: the host answered before the app did.
+        if (response.status === 413) {
+          toast.error("Those images are too large to send", {
+            description: "Attach fewer or smaller ones.",
+          });
+        } else {
+          toast.error(`The server answered ${response.status}`, {
+            description: "Try again in a moment.",
+          });
+        }
         return failed;
       }
 

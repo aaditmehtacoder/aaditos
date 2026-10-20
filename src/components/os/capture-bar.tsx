@@ -13,9 +13,11 @@
  * an event, or a thought about a class — and saves it. Nothing to choose, no
  * form, no dropdowns.
  *
- * Images: drag one onto the box, paste a screenshot, or use the paperclip.
- * They are downscaled in the browser, read by the model alongside the text,
- * and attached to whatever it files.
+ * Images: drop one anywhere on the page, paste a screenshot, or use the
+ * paperclip. They are downscaled in the browser to a size the server will
+ * take, read by the model alongside the text, and attached to whatever it
+ * files. The drop target is the whole window on purpose: a photo dropped an
+ * inch outside a box would otherwise replace the app with the photo.
  *
  * It saves rather than proposing on purpose. A confirmation step is the right
  * call for an assistant acting on its own initiative, and the wrong call for
@@ -24,16 +26,17 @@
  */
 
 import { CornerDownLeft, ImagePlus, Loader2, Sparkles, X } from "lucide-react";
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useCapture } from "@/lib/hooks/use-capture";
-import { isImageFile, prepareImage, type PreparedImage } from "@/lib/repo/blobs";
+import { MAX_IMAGES, isImageFile, prepareImage, type PreparedImage } from "@/lib/repo/blobs";
 import { cn } from "@/lib/utils";
 
-const MAX_IMAGES = 4;
+/** Mounted boxes, oldest first. See the window listeners below. */
+const dropTargets: object[] = [];
 
 interface Pending extends PreparedImage {
   key: string;
@@ -57,7 +60,9 @@ export function CaptureBar({
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const dragDepth = useRef(0);
+  // The window listeners below are registered once; they reach the latest
+  // `addFiles` through this ref.
+  const addFilesRef = useRef<(files: Iterable<File>) => Promise<void>>(async () => {});
 
   // Object URLs are revoked when the preview goes away, not before.
   useEffect(() => () => images.forEach((i) => URL.revokeObjectURL(i.previewUrl)), [images]);
@@ -92,6 +97,57 @@ export function CaptureBar({
     inputRef.current?.focus();
   }
 
+  addFilesRef.current = addFiles;
+
+  // The whole page accepts a drop. Only the most recently mounted box takes
+  // it, so a class page's box wins over the home box underneath.
+  useEffect(() => {
+    const token = {};
+    dropTargets.push(token);
+    const mine = () => dropTargets[dropTargets.length - 1] === token;
+    const hasFiles = (e: globalThis.DragEvent) =>
+      Array.from(e.dataTransfer?.types ?? []).includes("Files");
+    let depth = 0;
+
+    const onEnter = (e: globalThis.DragEvent) => {
+      if (!mine() || !hasFiles(e)) return;
+      e.preventDefault();
+      depth += 1;
+      setDragging(true);
+    };
+    const onOver = (e: globalThis.DragEvent) => {
+      if (!mine() || !hasFiles(e)) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    };
+    const onLeave = (e: globalThis.DragEvent) => {
+      if (!mine() || !hasFiles(e)) return;
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) setDragging(false);
+    };
+    const onDrop = (e: globalThis.DragEvent) => {
+      if (!mine() || !hasFiles(e)) return;
+      e.preventDefault();
+      depth = 0;
+      setDragging(false);
+      const files = e.dataTransfer?.files;
+      if (files && files.length > 0) void addFilesRef.current(files);
+    };
+
+    window.addEventListener("dragenter", onEnter);
+    window.addEventListener("dragover", onOver);
+    window.addEventListener("dragleave", onLeave);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragenter", onEnter);
+      window.removeEventListener("dragover", onOver);
+      window.removeEventListener("dragleave", onLeave);
+      window.removeEventListener("drop", onDrop);
+      const at = dropTargets.indexOf(token);
+      if (at >= 0) dropTargets.splice(at, 1);
+    };
+  }, []);
+
   function remove(key: string) {
     setImages((prev) => {
       const gone = prev.find((i) => i.key === key);
@@ -116,34 +172,10 @@ export function CaptureBar({
     }
   }
 
-  function onDragEnter(e: DragEvent) {
-    if (!e.dataTransfer.types.includes("Files")) return;
-    e.preventDefault();
-    dragDepth.current += 1;
-    setDragging(true);
-  }
-  function onDragLeave(e: DragEvent) {
-    e.preventDefault();
-    dragDepth.current = Math.max(0, dragDepth.current - 1);
-    if (dragDepth.current === 0) setDragging(false);
-  }
-  function onDrop(e: DragEvent) {
-    e.preventDefault();
-    dragDepth.current = 0;
-    setDragging(false);
-    void addFiles(e.dataTransfer.files);
-  }
-
   const canSubmit = !busy && (text.trim().length > 0 || images.length > 0);
 
   return (
     <div
-      onDragEnter={onDragEnter}
-      onDragOver={(e) => {
-        if (e.dataTransfer.types.includes("Files")) e.preventDefault();
-      }}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
       className={cn(
         "relative rounded-[14px] border bg-card p-2 transition-colors focus-within:border-foreground/20",
         dragging ? "border-primary bg-primary-soft/30" : "border-border",
@@ -233,7 +265,7 @@ export function CaptureBar({
             variant="ghost"
             className="size-7 text-muted-foreground"
             aria-label="Attach an image"
-            title="Attach an image — or drop or paste one"
+            title="Attach an image — or drop one anywhere, or paste"
             disabled={busy || images.length >= MAX_IMAGES}
             onClick={() => fileRef.current?.click()}
           >

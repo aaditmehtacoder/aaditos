@@ -80,43 +80,128 @@ export interface PreparedImage {
   name: string;
 }
 
-/** Longest edge after downscaling. Legible for text, small enough to send. */
-const MAX_EDGE = 1600;
-const JPEG_QUALITY = 0.8;
+/**
+ * The most one prepared image may weigh.
+ *
+ * Images travel to the server as base64 inside a JSON body, and Vercel
+ * refuses any body over 4.5 MB with a bare 413 before the app sees it. Four
+ * images at this size, base64-inflated by a third, fit under the server's own
+ * 4 MB ceiling with room for the text. A 1600px JPEG of a worksheet or a
+ * screenshot is well under this; the budget only bites on a PNG of
+ * photo-like content, which is exactly where PNG is the wrong choice.
+ */
+export const MAX_IMAGE_BYTES = 700_000;
+export const MAX_IMAGES = 4;
+/** Total data-URL characters one capture may carry. Mirrors `CaptureRequestSchema`. */
+export const MAX_UPLOAD_CHARS = 4_000_000;
+
+/**
+ * How an image is tried, in order, until one encoding fits the budget. The
+ * first step keeps PNG so a screenshot's text stays crisp; after that, each
+ * step trades a little quality or size for bytes. The last step always fits.
+ */
+export interface EncodeStep {
+  maxEdge: number;
+  mimeType: "image/png" | "image/jpeg";
+  quality?: number;
+}
+
+export function encodingSteps(sourceType: string): EncodeStep[] {
+  const steps: EncodeStep[] = [];
+  if (sourceType === "image/png") steps.push({ maxEdge: 1600, mimeType: "image/png" });
+  steps.push(
+    { maxEdge: 1600, mimeType: "image/jpeg", quality: 0.8 },
+    { maxEdge: 1600, mimeType: "image/jpeg", quality: 0.65 },
+    { maxEdge: 1280, mimeType: "image/jpeg", quality: 0.65 },
+    { maxEdge: 1024, mimeType: "image/jpeg", quality: 0.6 },
+    { maxEdge: 800, mimeType: "image/jpeg", quality: 0.5 },
+  );
+  return steps;
+}
 
 export function isImageFile(file: File | Blob): boolean {
-  return /^image\/(png|jpe?g|webp|gif|heic|heif|bmp)$/i.test(file.type);
+  if (/^image\/(png|jpe?g|webp|gif|heic|heif|bmp|avif)$/i.test(file.type)) return true;
+  // Finder and Photos sometimes hand over a HEIC with an empty type.
+  const name = "name" in file ? String((file as File).name) : "";
+  return /\.(heic|heif)$/i.test(name);
+}
+
+function isHeic(file: File | Blob): boolean {
+  if (/^image\/hei[cf]$/i.test(file.type)) return true;
+  const name = "name" in file ? String((file as File).name) : "";
+  return /\.(heic|heif)$/i.test(name);
 }
 
 /**
- * Decode, downscale and re-encode. Keeps PNG for screenshots (text stays
- * crisp) and uses JPEG for everything else (photos compress far better).
+ * Decode, downscale and re-encode so the result fits `MAX_IMAGE_BYTES`.
+ * Keeps PNG for screenshots when it is cheap enough (text stays crisp) and
+ * falls back to JPEG, then to smaller JPEGs, for everything else.
  */
 export async function prepareImage(file: File | Blob, name = "image"): Promise<PreparedImage> {
-  const bitmap = await decode(file);
-  const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
-  const width = Math.max(1, Math.round(bitmap.width * scale));
-  const height = Math.max(1, Math.round(bitmap.height * scale));
+  const source = isHeic(file) ? await convertHeic(file) : file;
+  const bitmap = await decode(source);
+  try {
+    let last: PreparedImage | undefined;
+    for (const step of encodingSteps(source.type)) {
+      last = await encode(bitmap, step, name);
+      if (last.blob.size <= MAX_IMAGE_BYTES) return last;
+    }
+    if (!last) throw new Error("Could not prepare the image.");
+    return last;
+  } finally {
+    if ("close" in bitmap) bitmap.close();
+  }
+}
+
+async function encode(
+  bitmap: ImageBitmap | HTMLImageElement,
+  step: EncodeStep,
+  name: string,
+): Promise<PreparedImage> {
+  const sourceWidth = "naturalWidth" in bitmap ? bitmap.naturalWidth : bitmap.width;
+  const sourceHeight = "naturalHeight" in bitmap ? bitmap.naturalHeight : bitmap.height;
+  const scale = Math.min(1, step.maxEdge / Math.max(sourceWidth, sourceHeight));
+  const width = Math.max(1, Math.round(sourceWidth * scale));
+  const height = Math.max(1, Math.round(sourceHeight * scale));
 
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Could not prepare the image.");
+  if (step.mimeType === "image/jpeg") {
+    // JPEG has no alpha; a transparent screenshot would otherwise go black.
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, width, height);
+  }
   ctx.drawImage(bitmap, 0, 0, width, height);
-  if ("close" in bitmap) bitmap.close();
 
-  const png = file.type === "image/png" && width * height < 2_200_000;
-  const mimeType = png ? "image/png" : "image/jpeg";
   const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
       (out) => (out ? resolve(out) : reject(new Error("Could not encode the image."))),
-      mimeType,
-      png ? undefined : JPEG_QUALITY,
+      step.mimeType,
+      step.quality,
     );
   });
-  const safeName = name.replace(/\.[a-z0-9]+$/i, "") + (png ? ".png" : ".jpg");
-  return { blob, width, height, mimeType, name: safeName };
+  const extension = step.mimeType === "image/png" ? ".png" : ".jpg";
+  const safeName = name.replace(/\.[a-z0-9]+$/i, "") + extension;
+  return { blob, width, height, mimeType: step.mimeType, name: safeName };
+}
+
+/**
+ * iPhone photos arrive as HEIC, which Chrome cannot decode. The converter is
+ * a sizeable chunk and is only fetched the first time one shows up.
+ */
+async function convertHeic(file: Blob): Promise<Blob> {
+  try {
+    const { default: heic2any } = await import("heic2any");
+    const out = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
+    return Array.isArray(out) ? (out[0] as Blob) : (out as Blob);
+  } catch {
+    throw new Error(
+      "That HEIC photo could not be converted. In Photos, export it as JPEG and try again.",
+    );
+  }
 }
 
 async function decode(file: Blob): Promise<ImageBitmap | HTMLImageElement> {
