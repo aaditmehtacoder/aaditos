@@ -8,6 +8,7 @@ import {
   useRouter,
   useRouterState,
 } from "@tanstack/react-router";
+import type { ErrorComponentProps } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 
 import { AppShell } from "@/components/os/app-shell";
@@ -46,8 +47,10 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+function ErrorComponent({ error: thrown, reset }: ErrorComponentProps) {
   const router = useRouter();
+  // The boundary can catch anything that was thrown, not only an Error.
+  const error = thrown instanceof Error ? thrown : new Error(String(thrown));
   useEffect(() => {
     console.error(error);
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
