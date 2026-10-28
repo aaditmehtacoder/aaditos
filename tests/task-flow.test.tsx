@@ -11,20 +11,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TaskRow } from "@/components/os/task-row";
 import { AuthGate } from "@/components/os/auth-gate";
 import type { AuthSession, AuthStatus } from "@/lib/auth/context";
-import { DEMO_USER_ID } from "@/lib/repo/seed";
+import { stableId } from "@/lib/core/ids";
 import { OSProvider, useOS } from "@/lib/store";
 import { APP_TZ, zonedToUtc } from "@/lib/core/time";
 import type { Task } from "@/lib/core/types";
 
 // ---- auth + router doubles ----------------------------------------------
 
+const USER_ID = stableId("test-user");
+
 const authState = {
   status: "authenticated" as AuthStatus,
   session: {
-    mode: "demo",
+    mode: "google",
     profile: {
-      id: DEMO_USER_ID,
-      email: "demo@aaditos.app",
+      id: USER_ID,
+      email: "test@aaditos.app",
       name: "Aadit Mehta",
       school: "Wilcox High School",
       grade: "Grade 9",
@@ -46,12 +48,22 @@ vi.mock("@/lib/auth/context", async (importOriginal) => {
       error: null,
       supabaseConfigured: false,
       signInWithGoogle: vi.fn(),
-      enterDemoMode: vi.fn(),
+      signInWithPasscode: vi.fn(),
       signOut: vi.fn(),
       clearError: vi.fn(),
     }),
   };
 });
+
+// The store picks Supabase whenever the browser has a project URL — which a
+// developer's .env supplies to vitest too. These tests are about the local
+// repository, so the project is declared absent here.
+vi.mock("@/lib/auth/config", () => ({
+  supabaseConfigured: false,
+  supabaseUrl: undefined,
+  supabaseAnonKey: undefined,
+  LAST_ROUTE_KEY: "aaditos:last-route",
+}));
 
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children, ...props }: { children: React.ReactNode }) => <a {...props}>{children}</a>,
@@ -96,6 +108,19 @@ function TaskHarness() {
       >
         Add task
       </button>
+      <button
+        type="button"
+        onClick={() =>
+          void createTask({
+            title: "Algebra 2 worksheet 1.1–1.3",
+            category: "school",
+            estimateMin: 30,
+            dueAt: NOW.toISOString(),
+          })
+        }
+      >
+        Add worksheet
+      </button>
       <ul>
         {workspace.tasks.map((task) => (
           <li key={task.id} data-testid="task-item">
@@ -115,16 +140,24 @@ function renderApp() {
   );
 }
 
+/** Nothing is seeded any more, so each test puts its own task on the list first. */
+async function addWorksheet(user: ReturnType<typeof userEvent.setup>) {
+  await waitFor(() => expect(screen.getByRole("button", { name: "Add worksheet" })).toBeEnabled());
+  await user.click(screen.getByRole("button", { name: "Add worksheet" }));
+  await waitFor(() => expect(screen.getByText("Algebra 2 worksheet 1.1–1.3")).toBeInTheDocument());
+}
+
 describe("task flow", () => {
   beforeEach(() => {
     window.localStorage.clear();
     authState.status = "authenticated";
   });
 
-  it("loads the seeded demo workspace", async () => {
+  it("starts with an empty workspace — no sample data", async () => {
     renderApp();
-    await waitFor(() => expect(screen.getByTestId("open-count")).not.toHaveTextContent("0"));
-    expect(Number(screen.getByTestId("open-count").textContent)).toBeGreaterThan(3);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Add task" })).toBeEnabled());
+    expect(screen.getByTestId("open-count")).toHaveTextContent("0");
+    expect(screen.getByTestId("done-count")).toHaveTextContent("0");
   });
 
   it("creates a task and shows it immediately", async () => {
@@ -144,9 +177,7 @@ describe("task flow", () => {
   it("completes a task optimistically and moves it to done", async () => {
     const user = userEvent.setup();
     renderApp();
-    await waitFor(() =>
-      expect(screen.getByText("Algebra 2 worksheet 1.1–1.3")).toBeInTheDocument(),
-    );
+    await addWorksheet(user);
 
     const doneBefore = Number(screen.getByTestId("done-count").textContent);
     const checkbox = screen.getByRole("checkbox", { name: /Complete Algebra 2 worksheet/i });
@@ -160,9 +191,7 @@ describe("task flow", () => {
   it("persists a completion across a remount", async () => {
     const user = userEvent.setup();
     const first = renderApp();
-    await waitFor(() =>
-      expect(screen.getByText("Algebra 2 worksheet 1.1–1.3")).toBeInTheDocument(),
-    );
+    await addWorksheet(user);
     await user.click(screen.getByRole("checkbox", { name: /Complete Algebra 2 worksheet/i }));
     await waitFor(() =>
       expect(screen.getByRole("checkbox", { name: /Reopen Algebra 2 worksheet/i })).toBeChecked(),
@@ -196,9 +225,7 @@ describe("task flow", () => {
   it("reopens a completed task", async () => {
     const user = userEvent.setup();
     renderApp();
-    await waitFor(() =>
-      expect(screen.getByText("Algebra 2 worksheet 1.1–1.3")).toBeInTheDocument(),
-    );
+    await addWorksheet(user);
 
     await user.click(screen.getByRole("checkbox", { name: /Complete Algebra 2 worksheet/i }));
     await waitFor(() =>
@@ -221,7 +248,7 @@ describe("TaskRow", () => {
     // word as evidence the row labels lateness in text, and a title carrying it
     // would satisfy the query even if the label were removed.
     title: "Signed permission slip",
-    userId: DEMO_USER_ID,
+    userId: USER_ID,
     category: "school",
     // Anchored well in the past rather than to a near-future literal, which
     // silently stops being overdue once the calendar passes it.

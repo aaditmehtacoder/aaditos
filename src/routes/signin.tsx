@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { ArrowRight, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { LogoMark } from "@/components/os/logo";
@@ -32,19 +32,12 @@ export const Route = createFileRoute("/signin")({
  * every one of those was a decision before the only field that matters.
  *
  * Google sign-in is still here as the fallback for a deployment where the
- * password has not been configured, and demo mode is a quiet link at the
- * bottom. Neither competes with the field.
+ * password has not been configured. There is no demo mode: the only way in is
+ * a real session.
  */
 function SignInPage() {
-  const {
-    status,
-    error,
-    signInWithGoogle,
-    signInWithPasscode,
-    enterDemoMode,
-    supabaseConfigured,
-    clearError,
-  } = useAuth();
+  const { status, error, signInWithGoogle, signInWithPasscode, supabaseConfigured, clearError } =
+    useAuth();
   const navigate = useNavigate();
 
   // null until the server has answered, so the page never flashes the wrong door.
@@ -197,16 +190,6 @@ function SignInPage() {
             </p>
           </div>
         ) : null}
-
-        <button
-          type="button"
-          onClick={enterDemoMode}
-          disabled={status === "loading"}
-          className="mt-8 inline-flex items-center gap-1 text-[12px] text-muted-foreground transition-colors hover:text-foreground"
-        >
-          Explore demo mode
-          <ArrowRight className="size-3" aria-hidden />
-        </button>
       </div>
     </main>
   );

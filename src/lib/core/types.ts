@@ -33,7 +33,7 @@ export const SOURCE_LABELS: Record<SourceId, string> = {
   google_classroom: "Classroom",
   google_calendar: "Calendar",
   wilcox: "Wilcox",
-  demo: "Demo",
+  demo: "Seeded",
   gmail: "Gmail",
   github: "GitHub",
   slack: "Slack",

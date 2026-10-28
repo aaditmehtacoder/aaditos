@@ -8,8 +8,9 @@
  * no cap on how many files a message can carry — the request stays small no
  * matter what is attached.
  *
- * Demo mode has no bucket. Files go into IndexedDB and travel as data URLs,
- * so the host's 4.5 MB request limit applies there and only there.
+ * Without a Supabase project there is no bucket. Files go into IndexedDB and
+ * travel as data URLs, so the host's 4.5 MB request limit applies there and
+ * only there.
  */
 
 import { getSupabase } from "@/lib/auth/client";
@@ -22,7 +23,7 @@ const BUCKET = "attachments";
 
 /** Supabase's bucket ceiling, set in `supabase/migrations/0006_chat.sql`. */
 export const MAX_PDF_BYTES = 25 * 1024 * 1024;
-/** Demo mode sends bytes in the body, so one PDF there must leave room for the rest. */
+/** The local store sends bytes in the body, so one PDF there must leave room for the rest. */
 export const MAX_LOCAL_PDF_BYTES = 2_500_000;
 /** Signed links live this long. The model fetches within seconds; the viewer within the hour. */
 const SIGNED_TTL_SEC = 2 * 60 * 60;
@@ -32,9 +33,8 @@ export interface FileStore {
   userId: string;
 }
 
-export function fileStoreFor(userId: string, isDemo: boolean): FileStore {
-  const supabase = !isDemo && getSupabase();
-  return { kind: supabase ? "supabase" : "local", userId };
+export function fileStoreFor(userId: string): FileStore {
+  return { kind: getSupabase() ? "supabase" : "local", userId };
 }
 
 export function isPdfFile(file: File | Blob): boolean {

@@ -22,7 +22,7 @@ function formatUuid(bytes: number[]): string {
 }
 
 /**
- * Deterministic UUID-shaped id derived from a string. Used for demo seed rows
+ * Deterministic UUID-shaped id derived from a string. Used for seeded course rows
  * and for imported records so repeated syncs are idempotent.
  */
 export function stableId(input: string): string {

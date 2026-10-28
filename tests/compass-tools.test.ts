@@ -19,7 +19,6 @@ const snapshot: CompassSnapshot = {
   profile: { name: "Aadit Mehta", grade: "Grade 9", school: "Wilcox", city: "Santa Clara" },
   schoolDay: { isSchoolDay: true, reason: "School day" },
   availableMin: 120,
-  isDemo: true,
   courses: ["Algebra 2", "Biology"],
   tasks: [
     {

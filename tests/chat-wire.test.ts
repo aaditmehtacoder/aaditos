@@ -70,7 +70,7 @@ describe("toInputItems", () => {
     });
   });
 
-  it("sends demo-mode bytes as file_data and supplies text when there is none", () => {
+  it("sends data-URL bytes as file_data and supplies text when there is none", () => {
     const [item] = toInputItems([
       { role: "user", content: "   ", attachments: [{ kind: "pdf", name: "x.pdf", url: tinyPdf }] },
     ]);
@@ -171,7 +171,7 @@ describe("CompassMessageSchema with files", () => {
     ).toBe(false);
   });
 
-  it("caps the bytes demo mode may carry in one request", () => {
+  it("caps the bytes a data-URL message may carry in one request", () => {
     const big = `data:image/png;base64,${"A".repeat(1_500_000)}`;
     const request = {
       messages: [
@@ -192,7 +192,6 @@ describe("CompassMessageSchema with files", () => {
         events: [],
         notes: [],
         courses: [],
-        isDemo: true,
       },
       clientId: "client-12345678",
     };
@@ -239,7 +238,6 @@ describe("the painter", () => {
       events: [],
       notes: [],
       courses: [],
-      isDemo: false,
     };
     expect(systemInstructions(snapshot, { pictures: "on" })).toMatch(
       /call the image_generation tool/,

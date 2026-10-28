@@ -111,9 +111,6 @@ export function systemInstructions(
     `- Now is ${snapshot.now} (${snapshot.timezone}). ${snapshot.schoolDay.reason}.`,
     snapshot.schoolDay.nextClass ? `- Next class: ${snapshot.schoolDay.nextClass}.` : "",
     `- Their classes are: ${snapshot.courses.join(", ") || "not synced yet"}.`,
-    snapshot.isDemo
-      ? "- This workspace is running on DEMO data. Say so whenever the answer depends on it."
-      : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -133,7 +130,7 @@ type InputItem = Record<string, unknown>;
  *
  * A message with files becomes a content array: the text, then each image
  * as `input_image` and each PDF as `input_file`. Storage links are passed
- * through for the model to fetch; demo mode's data URLs travel as
+ * through for the model to fetch; a local store's data URLs travel as
  * `file_data`, which is the only form OpenAI accepts bytes in. Older turns
  * keep their files too — "what did page 3 say?" has to still work five
  * messages later — which is why `HISTORY_WINDOW` is a window.

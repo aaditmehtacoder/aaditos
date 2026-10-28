@@ -4,7 +4,7 @@
  * One hook drives the whole Ask page so that streaming, tools, pictures,
  * cancellation, errors and persistence can never drift apart. A turn is:
  *
- *   1. put the user's files away (Storage, or IndexedDB in demo mode)
+ *   1. put the user's files away (Storage, or IndexedDB without Supabase)
  *   2. send the window of history as *links*, never bytes
  *   3. stream events into the assistant turn as they arrive
  *   4. keep any picture it drew, then save the chat
@@ -140,7 +140,7 @@ function messagesFromTurns(turns: Turn[]): ChatMessage[] {
 }
 
 export function useCompassChat(): CompassChat {
-  const { workspace, isDemo, now, userId } = useOS();
+  const { workspace, now, userId } = useOS();
   const { items: inbox } = useInbox();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [busy, setBusy] = useState(false);
@@ -153,13 +153,10 @@ export function useCompassChat(): CompassChat {
   turnsRef.current = turns;
   const activeRef = useRef<{ id: string; createdAt: string } | null>(null);
 
-  const fileStore = useMemo(() => fileStoreFor(userId, isDemo), [userId, isDemo]);
-  const chatStore = useMemo<ChatStore>(() => chatStoreFor(userId, isDemo), [userId, isDemo]);
+  const fileStore = useMemo(() => fileStoreFor(userId), [userId]);
+  const chatStore = useMemo<ChatStore>(() => chatStoreFor(userId), [userId]);
 
-  const snapshot = useMemo(
-    () => buildSnapshot(workspace, now, { isDemo, inbox }),
-    [workspace, now, isDemo, inbox],
-  );
+  const snapshot = useMemo(() => buildSnapshot(workspace, now, { inbox }), [workspace, now, inbox]);
 
   // Abort any in-flight turn if the surface unmounts.
   useEffect(() => () => abortRef.current?.abort(), []);

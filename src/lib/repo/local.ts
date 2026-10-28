@@ -24,7 +24,7 @@ import type {
 } from "@/lib/core/types";
 
 import { clearBlobsWithPrefix, deleteBlob, getBlob, putBlob } from "./blobs";
-import { defaultPreferences, emptyWorkspace, seedWorkspace } from "./seed";
+import { defaultPreferences, emptyWorkspace } from "./seed";
 import type { AttachmentInput, ImportResult, NoteInput, Repository, TaskInput } from "./types";
 
 const SCHEMA_VERSION = 1;
@@ -59,10 +59,7 @@ export class LocalRepository implements Repository {
 
   private cache = new Map<UUID, Workspace>();
 
-  constructor(
-    private readonly profileFor: (userId: UUID) => Profile,
-    private readonly seedOnFirstRun: boolean,
-  ) {}
+  constructor(private readonly profileFor: (userId: UUID) => Profile) {}
 
   private key(userId: UUID): string {
     return `${KEY_PREFIX}${userId}`;
@@ -100,9 +97,7 @@ export class LocalRepository implements Repository {
     }
 
     if (!workspace) {
-      workspace = this.seedOnFirstRun
-        ? seedWorkspace(userId, profile)
-        : emptyWorkspace(userId, profile);
+      workspace = emptyWorkspace(userId, profile);
       this.cache.set(userId, workspace);
       this.write(userId);
       return workspace;
@@ -364,19 +359,6 @@ function upsertBy<T extends { id: string; updatedAt: string }>(
 
 function structuredCopy<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
-}
-
-export function demoProfile(userId: UUID, overrides: Partial<Profile> = {}): Profile {
-  return {
-    id: userId,
-    email: "demo@aaditos.app",
-    name: "Aadit Mehta",
-    school: "Wilcox High School",
-    grade: "Grade 9",
-    city: "Santa Clara, CA",
-    timezone: "America/Los_Angeles",
-    ...overrides,
-  };
 }
 
 export function localUserIdFor(email: string): UUID {

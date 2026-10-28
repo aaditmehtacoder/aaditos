@@ -71,7 +71,7 @@ export const Route = createFileRoute("/api/capture")({
               code: limit.reason === "daily" ? "daily_cap" : "rate_limited",
               message:
                 limit.reason === "daily" && caller.kind === "guest"
-                  ? "Demo mode gets a few captures a day. Sign in for unlimited."
+                  ? "Sign in to keep capturing."
                   : `Too many requests at once. Try again in ${limit.retryAfterSec}s.`,
             },
             429,

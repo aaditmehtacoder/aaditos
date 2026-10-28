@@ -2,7 +2,7 @@
  * A conversation with the assistant, as it is kept.
  *
  * Messages carry file *references*, never bytes: a photo lives in Storage
- * (or IndexedDB in demo mode) and the message points at it. That keeps a
+ * (or IndexedDB without Supabase) and the message points at it. That keeps a
  * chat with fifty pictures a few kilobytes, and means the same picture can
  * be shown again, sent again, or downloaded without ever being re-encoded.
  */

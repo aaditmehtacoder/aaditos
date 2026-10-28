@@ -80,7 +80,6 @@ interface OSState {
 
   workspace: Workspace;
   repositoryKind: Repository["kind"];
-  isDemo: boolean;
   profile: Profile;
   userId: string;
 
@@ -154,10 +153,9 @@ const Ctx = createContext<OSState | null>(null);
 const THEME_KEY = "aaditos:theme";
 
 function repositoryFor(session: AuthSession): Repository {
-  if (session.mode === "google" && supabaseConfigured) {
-    return new SupabaseRepository(() => session.profile);
-  }
-  return new LocalRepository(() => session.profile, session.mode === "demo");
+  if (supabaseConfigured) return new SupabaseRepository(() => session.profile);
+  // No Supabase project configured: everything stays in this browser.
+  return new LocalRepository(() => session.profile);
 }
 
 export function OSProvider({ children }: { children: ReactNode }) {
@@ -670,7 +668,6 @@ export function OSProvider({ children }: { children: ReactNode }) {
       retry: () => setReloadToken((t) => t + 1),
       workspace,
       repositoryKind: repoRef.current?.kind ?? "local",
-      isDemo: session?.mode === "demo",
       profile,
       userId,
       now,
@@ -706,7 +703,6 @@ export function OSProvider({ children }: { children: ReactNode }) {
       status,
       error,
       workspace,
-      session?.mode,
       profile,
       userId,
       now,

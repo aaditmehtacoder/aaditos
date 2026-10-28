@@ -26,7 +26,6 @@ const validSnapshot = {
   events: [],
   notes: [],
   courses: ["Algebra 2"],
-  isDemo: true,
 };
 
 const validCompass = {

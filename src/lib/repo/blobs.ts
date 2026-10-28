@@ -3,7 +3,7 @@
  *
  * `localStorage` is the wrong place for photos: a 5 MB quota is three
  * whiteboard pictures. IndexedDB holds blobs natively and has a quota in the
- * hundreds of megabytes, so the local and demo workspaces keep their images
+ * hundreds of megabytes, so the local workspace keeps its images
  * here, keyed by attachment id, and the workspace record only carries the key.
  *
  * Also the client-side preparation step every image goes through before it

@@ -13,5 +13,4 @@ export const supabaseUrl = url?.trim() || undefined;
 export const supabaseAnonKey = anonKey?.trim() || undefined;
 export const supabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
-export const DEMO_SESSION_KEY = "aaditos:session-mode";
 export const LAST_ROUTE_KEY = "aaditos:last-route";

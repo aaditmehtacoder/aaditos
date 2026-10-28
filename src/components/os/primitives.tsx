@@ -76,7 +76,7 @@ export function PageIntro({
   );
 }
 
-/** Sources worth naming. "manual" and "demo" are noise on every row. */
+/** Sources worth naming. "manual" and the seeded "demo" schedule are noise on every row. */
 const QUIET_SOURCES = new Set<SourceId>(["manual", "demo"]);
 
 export function isExternalSource(source: SourceId): boolean {

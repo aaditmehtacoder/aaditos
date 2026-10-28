@@ -5,7 +5,7 @@
  * owner-only by Row Level Security (`supabase/migrations/0006_chat.sql`).
  * A chat started on the Chromebook is there on the Mac.
  *
- * Demo mode, or a project where that migration has not been applied yet:
+ * No Supabase project, or one where that migration has not been applied yet:
  * localStorage on this device, under the user's id. The switch is automatic
  * and logged once, so a missing table degrades to "chats stay on this
  * device" rather than to "chats vanish".
@@ -182,6 +182,6 @@ export class SupabaseChatStore implements ChatStore {
   }
 }
 
-export function chatStoreFor(userId: string, isDemo: boolean): ChatStore {
-  return !isDemo && getSupabase() ? new SupabaseChatStore(userId) : new LocalChatStore(userId);
+export function chatStoreFor(userId: string): ChatStore {
+  return getSupabase() ? new SupabaseChatStore(userId) : new LocalChatStore(userId);
 }

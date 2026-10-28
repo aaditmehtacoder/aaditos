@@ -74,8 +74,8 @@ export const Route = createFileRoute("/api/compass")({
           );
         }
 
-        // The owner is never capped; a guest (demo mode, or a stranger who
-        // found the endpoint) gets a small daily allowance that protects the key.
+        // The owner is never capped; a guest (a stranger who found the
+        // endpoint) gets a small daily allowance that protects the key.
         const caller = await identifyCaller(request, parsed.data.clientId);
         const limit = checkRateLimit(
           callerKey(request, caller.kind === "owner" ? `owner:${caller.id}` : caller.id),
@@ -89,7 +89,7 @@ export const Route = createFileRoute("/api/compass")({
               message:
                 limit.reason === "daily"
                   ? caller.kind === "guest"
-                    ? "Demo mode gets a few questions a day. Sign in for unlimited."
+                    ? "Sign in to keep asking."
                     : "The daily request stop you configured was reached."
                   : `Too many requests at once. Try again in ${limit.retryAfterSec}s.`,
               retryable: true,

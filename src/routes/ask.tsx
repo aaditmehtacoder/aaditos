@@ -115,7 +115,7 @@ function AskPage() {
             const limit = local ? MAX_LOCAL_PDF_BYTES : MAX_PDF_BYTES;
             if (file.size > limit) {
               toast.error(`"${file.name}" is too big`, {
-                description: `PDFs up to ${formatBytes(limit)} here${local ? " in demo mode" : ""}.`,
+                description: `PDFs up to ${formatBytes(limit)} here.`,
               });
               continue;
             }
@@ -493,7 +493,7 @@ function AskPage() {
             <ImagePlus className="size-3 shrink-0" aria-hidden />
             <span className="min-w-0 truncate">
               {local
-                ? "Demo mode: files stay on this device, and one message can carry about 4 MB."
+                ? "Files stay on this device, and one message can carry about 4 MB."
                 : "Files go to your own private storage; the model gets a link. Nothing is kept by OpenAI."}
             </span>
           </p>

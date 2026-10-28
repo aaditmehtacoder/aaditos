@@ -16,7 +16,7 @@ export const ImageDataUrlSchema = z
   .max(1_700_000)
   .regex(/^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/, "Not an image data URL");
 
-/** A data URL for one PDF. Demo mode only; signed-in users send a Storage URL. */
+/** A data URL for one PDF. Only without Supabase; otherwise a Storage URL is sent. */
 export const PdfDataUrlSchema = z
   .string()
   .max(4_000_000)
@@ -30,7 +30,7 @@ const HttpsUrlSchema = z
 /**
  * One file on a chat message. Either a URL the model can fetch — checked
  * against the app's own Storage host in the route, since a schema cannot see
- * the environment — or, for demo mode, the bytes themselves as a data URL.
+ * the environment — or, with no Storage, the bytes themselves as a data URL.
  */
 export const WireAttachmentSchema = z.discriminatedUnion("kind", [
   z.object({
@@ -113,7 +113,6 @@ export const CompassSnapshotSchema = z
     notes: z.array(z.record(z.unknown())).max(80),
     inbox: z.array(z.record(z.unknown())).max(80).optional(),
     courses: z.array(z.string().max(120)).max(20),
-    isDemo: z.boolean(),
   })
   .passthrough();
 
@@ -123,8 +122,8 @@ export const CompassRequestSchema = z
     snapshot: CompassSnapshotSchema,
     clientId: z.string().min(8).max(64),
   })
-  // Demo mode's data URLs share the host's 4.5 MB body limit; this fails
-  // with a sentence instead of a bare 413.
+  // Data URLs share the host's 4.5 MB body limit; this fails with a sentence
+  // instead of a bare 413.
   .refine(
     (r) =>
       r.messages.reduce(

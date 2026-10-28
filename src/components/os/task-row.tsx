@@ -102,7 +102,7 @@ export function TaskRow({ task, index }: { task: Task; index?: number }) {
               <span className="truncate">{course.name}</span>
             </>
           ) : null}
-          {/* Only genuinely external origins earn a tag; manual and demo do not. */}
+          {/* Only genuinely external origins earn a tag; manual and seeded rows do not. */}
           {isExternalSource(task.source) ? <SourceTag source={task.source} /> : null}
         </span>
       </button>

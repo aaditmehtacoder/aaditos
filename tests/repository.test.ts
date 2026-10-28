@@ -1,31 +1,36 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { stableId } from "@/lib/core/ids";
-import { LocalRepository, demoProfile } from "@/lib/repo/local";
-import { DEMO_USER_ID, seedCourses, seedNotes } from "@/lib/repo/seed";
-import type { CalendarEvent } from "@/lib/core/types";
+import { LocalRepository } from "@/lib/repo/local";
+import { seedCourses } from "@/lib/repo/seed";
+import type { CalendarEvent, Profile } from "@/lib/core/types";
 
-const USER = DEMO_USER_ID;
+const USER = stableId("test-user");
 
-function repo(seed = true) {
-  return new LocalRepository(() => demoProfile(USER), seed);
+function profileFor(userId: string): Profile {
+  return {
+    id: userId,
+    email: "test@aaditos.app",
+    name: "Aadit Mehta",
+    school: "Wilcox High School",
+    grade: "Grade 9",
+    city: "Santa Clara, CA",
+    timezone: "America/Los_Angeles",
+  };
+}
+
+function repo() {
+  return new LocalRepository(profileFor);
 }
 
 describe("LocalRepository", () => {
   beforeEach(() => window.localStorage.clear());
 
-  it("seeds a realistic demo workspace on first run", async () => {
+  it("starts empty on first run — there is no sample data", async () => {
     const workspace = await repo().loadWorkspace(USER);
-    expect(workspace.tasks.length).toBeGreaterThan(5);
-    expect(workspace.courses.map((c) => c.name)).toEqual(
-      expect.arrayContaining(["Algebra 2", "English 9 H", "Spanish 1", "Biology", "Tutorial"]),
-    );
-    expect(workspace.notes.length).toBeGreaterThan(0);
-  });
-
-  it("starts empty when seeding is off", async () => {
-    const workspace = await repo(false).loadWorkspace(USER);
     expect(workspace.tasks).toHaveLength(0);
+    expect(workspace.courses).toHaveLength(0);
+    expect(workspace.notes).toHaveLength(0);
   });
 
   it("persists a created task across repository instances", async () => {
@@ -53,16 +58,14 @@ describe("LocalRepository", () => {
 
   it("keeps each user's data separate", async () => {
     const other = stableId("other-user");
-    const r = repo(false);
+    const r = repo();
     await r.createTask(USER, { title: "Mine", category: "personal" });
-    const otherWorkspace = await new LocalRepository(() => demoProfile(other), false).loadWorkspace(
-      other,
-    );
+    const otherWorkspace = await new LocalRepository(profileFor).loadWorkspace(other);
     expect(otherWorkspace.tasks).toHaveLength(0);
   });
 
   it("persists a note against its class", async () => {
-    const r = repo(false);
+    const r = repo();
     const note = await r.createNote(USER, {
       courseId: "course-1",
       kind: "idea",
@@ -72,17 +75,17 @@ describe("LocalRepository", () => {
     expect(note.kind).toBe("idea");
     expect(note.taskId).toBeUndefined();
 
-    const reloaded = await repo(false).loadWorkspace(USER);
+    const reloaded = await repo().loadWorkspace(USER);
     expect(reloaded.notes.find((n) => n.id === note.id)?.courseId).toBe("course-1");
   });
 
   it("defaults a note to a thought when no kind is given", async () => {
-    const note = await repo(false).createNote(USER, { body: "Ask about the rubric" });
+    const note = await repo().createNote(USER, { body: "Ask about the rubric" });
     expect(note.kind).toBe("thought");
   });
 
   it("links a note to the task it became, and keeps the note when the task goes", async () => {
-    const r = repo(false);
+    const r = repo();
     const note = await r.createNote(USER, { body: "Ask about extra credit", kind: "idea" });
     const task = await r.createTask(USER, { title: "Ask about extra credit", category: "school" });
     const linked = await r.updateNote(USER, note.id, { taskId: task.id });
@@ -94,20 +97,18 @@ describe("LocalRepository", () => {
   });
 
   it("deletes a note", async () => {
-    const r = repo(false);
+    const r = repo();
     const note = await r.createNote(USER, { body: "Never mind" });
     await r.deleteNote(USER, note.id);
     expect((await r.loadWorkspace(USER)).notes).toHaveLength(0);
   });
 
   it("throws a clear error when updating a note that does not exist", async () => {
-    await expect(repo(false).updateNote(USER, "missing", { body: "x" })).rejects.toThrow(
-      /not found/i,
-    );
+    await expect(repo().updateNote(USER, "missing", { body: "x" })).rejects.toThrow(/not found/i);
   });
 
   it("replaces events for a calendar without touching other calendars", async () => {
-    const r = repo(false);
+    const r = repo();
     const make = (id: string, calendarId: string): CalendarEvent => ({
       id,
       userId: USER,
@@ -130,7 +131,7 @@ describe("LocalRepository", () => {
   });
 
   it("counts a re-import as an update rather than a new insert", async () => {
-    const r = repo(false);
+    const r = repo();
     const event: CalendarEvent = {
       id: "same",
       userId: USER,
@@ -149,8 +150,9 @@ describe("LocalRepository", () => {
 
   it("exports and then deletes everything", async () => {
     const r = repo();
+    await r.createTask(USER, { title: "Keep me", category: "personal" });
     const exported = await r.exportWorkspace(USER);
-    expect(exported.tasks.length).toBeGreaterThan(0);
+    expect(exported.tasks.length).toBe(1);
     await r.deleteAllData(USER);
     expect((await r.loadWorkspace(USER)).tasks).toHaveLength(0);
   });
@@ -158,7 +160,8 @@ describe("LocalRepository", () => {
   it("recovers from a corrupted storage payload instead of crashing", async () => {
     window.localStorage.setItem(`aaditos:v1:workspace:${USER}`, "{not json");
     const workspace = await repo().loadWorkspace(USER);
-    expect(workspace.tasks.length).toBeGreaterThan(0);
+    expect(workspace.tasks).toEqual([]);
+    expect(workspace.profile.id).toBe(USER);
   });
 
   it("persists preference changes", async () => {
@@ -180,29 +183,6 @@ describe("LocalRepository", () => {
  * id derived from the course key alone collides across accounts on the
  * `courses_pkey` primary key. See tests/google.test.ts for why that is fatal.
  */
-/**
- * Regression: the seeded notes referenced course keys ("english9", "finlit")
- * that no course actually used ("english9h", "financiallit"). Nothing failed —
- * the notes saved, and appeared on Today, and were simply invisible on every
- * class page forever, because their courseId matched no course.
- */
-describe("seedNotes", () => {
-  it("attaches every note to a course that actually exists", () => {
-    const now = new Date("2026-08-14T12:00:00Z");
-    const courseIds = new Set(seedCourses("user-a", now).map((c) => c.id));
-    const notes = seedNotes("user-a", now);
-    expect(notes.length).toBeGreaterThan(0);
-    for (const note of notes) {
-      expect(courseIds.has(note.courseId ?? "")).toBe(true);
-    }
-  });
-
-  it("seeds both kinds, so a class page shows what each is for", () => {
-    const kinds = new Set(seedNotes("user-a", new Date("2026-08-14T12:00:00Z")).map((n) => n.kind));
-    expect(kinds).toEqual(new Set(["thought", "idea"]));
-  });
-});
-
 describe("seedCourses", () => {
   it("gives two accounts different course ids for the same schedule", () => {
     const a = seedCourses("user-a", new Date("2026-08-14T12:00:00Z"));

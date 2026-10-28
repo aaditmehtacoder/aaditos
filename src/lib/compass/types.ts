@@ -78,7 +78,6 @@ export interface CompassSnapshot {
   /** Emails, mentions, issues and pages from connected apps. Optional: empty when nothing is connected. */
   inbox?: CompactInboxItem[] | undefined;
   courses: string[];
-  isDemo: boolean;
 }
 
 /**
@@ -86,8 +85,9 @@ export interface CompassSnapshot {
  *
  * Never the bytes. A signed Storage URL the model fetches itself, so a
  * conversation with thirty photos and a forty-page PDF is a few kilobytes of
- * JSON rather than a request the host refuses at 4.5 MB. Demo mode, which
- * has no Storage, sends a data URL instead and lives with the ceiling.
+ * JSON rather than a request the host refuses at 4.5 MB. Without a Supabase
+ * project there is no Storage, so a data URL goes instead and lives with the
+ * ceiling.
  */
 export interface WireAttachment {
   kind: "image" | "pdf";

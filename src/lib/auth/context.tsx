@@ -1,12 +1,10 @@
 /**
  * Authentication state.
  *
- * Two ways in:
- *   1. Google via Supabase — real accounts, real per-user data.
- *   2. Explicit demo mode — seeded sample data, always labelled as such.
- *
- * Nothing renders personal data until `status === "authenticated"`, and the
- * session is restored before the first paint of any protected route.
+ * One way in: a Supabase session, reached through the password field or
+ * Google. There is no demo or sample mode; nothing renders personal data
+ * until `status === "authenticated"`, and the session is restored before the
+ * first paint of any protected route.
  */
 
 import {
@@ -22,12 +20,11 @@ import {
 
 import type { Profile } from "@/lib/core/types";
 import { APP_TZ } from "@/lib/core/time";
-import { DEMO_USER_ID } from "@/lib/repo/seed";
 
 import { authCallbackUrl, getSupabase } from "./client";
-import { DEMO_SESSION_KEY, supabaseConfigured } from "./config";
+import { supabaseConfigured } from "./config";
 
-export type SessionMode = "google" | "demo";
+export type SessionMode = "google";
 
 export type AuthStatus = "loading" | "authenticated" | "signed-out";
 
@@ -46,24 +43,11 @@ interface AuthContextValue {
   signInWithGoogle: () => Promise<void>;
   /** Password sign-in — one field. `account` only matters if there is more than one. */
   signInWithPasscode: (passcode: string, account?: string) => Promise<boolean>;
-  enterDemoMode: () => void;
   signOut: () => Promise<void>;
   clearError: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-
-function demoProfile(): Profile {
-  return {
-    id: DEMO_USER_ID,
-    email: "demo@aaditos.app",
-    name: "Aadit Mehta",
-    school: "Wilcox High School",
-    grade: "Grade 9",
-    city: "Santa Clara, CA",
-    timezone: APP_TZ,
-  };
-}
 
 interface SupabaseUserLike {
   id: string;
@@ -102,8 +86,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let unsubscribe: (() => void) | undefined;
 
     async function restore() {
-      // A demo session is purely local and takes precedence over nothing —
-      // a real Supabase session always wins if both somehow exist.
       const supabase = getSupabase();
       if (supabase) {
         try {
@@ -117,9 +99,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               accessToken: data.session.access_token,
             });
             setStatus("authenticated");
-          } else if (readDemoFlag()) {
-            setSession({ mode: "demo", profile: demoProfile() });
-            setStatus("authenticated");
           } else {
             setStatus("signed-out");
           }
@@ -132,9 +111,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 profile: profileFromSupabase(nextSession.user as SupabaseUserLike),
                 accessToken: nextSession.access_token,
               });
-              setStatus("authenticated");
-            } else if (readDemoFlag()) {
-              setSession({ mode: "demo", profile: demoProfile() });
               setStatus("authenticated");
             } else {
               setSession(null);
@@ -150,12 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (!mounted.current) return;
-      if (readDemoFlag()) {
-        setSession({ mode: "demo", profile: demoProfile() });
-        setStatus("authenticated");
-      } else {
-        setStatus("signed-out");
-      }
+      setStatus("signed-out");
     }
 
     void restore();
@@ -220,20 +191,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setError(setErr.message);
       return false;
     }
-    // Leaving demo mode on would shadow the real session on the next reload.
-    writeDemoFlag(false);
     return true;
   }, []);
 
-  const enterDemoMode = useCallback(() => {
-    writeDemoFlag(true);
-    setSession({ mode: "demo", profile: demoProfile() });
-    setStatus("authenticated");
-    setError(null);
-  }, []);
-
   const signOut = useCallback(async () => {
-    writeDemoFlag(false);
     const supabase = getSupabase();
     if (supabase) {
       const { error: signOutError } = await supabase.auth.signOut();
@@ -251,11 +212,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       supabaseConfigured,
       signInWithGoogle,
       signInWithPasscode,
-      enterDemoMode,
       signOut,
       clearError: () => setError(null),
     }),
-    [status, session, error, signInWithGoogle, signInWithPasscode, enterDemoMode, signOut],
+    [status, session, error, signInWithGoogle, signInWithPasscode, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -267,27 +227,10 @@ export function useAuth(): AuthContextValue {
   return ctx;
 }
 
-function readDemoFlag(): boolean {
-  try {
-    return window.localStorage.getItem(DEMO_SESSION_KEY) === "demo";
-  } catch {
-    return false;
-  }
-}
-
-function writeDemoFlag(on: boolean): void {
-  try {
-    if (on) window.localStorage.setItem(DEMO_SESSION_KEY, "demo");
-    else window.localStorage.removeItem(DEMO_SESSION_KEY);
-  } catch {
-    // Private-mode browsers: demo mode simply will not persist across reloads.
-  }
-}
-
 /**
  * The row-ownership key. For Supabase sessions this is the Supabase user id,
  * which is exactly what the RLS policies compare against `auth.uid()`.
  */
 export function userIdForSession(session: AuthSession): string {
-  return session.mode === "demo" ? DEMO_USER_ID : session.profile.id;
+  return session.profile.id;
 }

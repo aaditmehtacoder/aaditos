@@ -49,8 +49,9 @@ bun install
 bun run dev            # http://localhost:8080
 ```
 
-Press **Explore demo mode** and everything works — no credentials, no database,
-no API keys. Demo data lives in `localStorage` and is never uploaded.
+Sign in with the password (below). There is no demo or sample mode: the app
+shows nothing until a real session exists. Without a Supabase project
+configured, a signed-in workspace stays in this browser's `localStorage`.
 
 ```bash
 bun run verify         # typecheck + lint + test + build — run this before pushing
@@ -71,8 +72,7 @@ attempts a minute, which is what makes a short password acceptable. Run
 `bun run passcode:provision` once to set it.
 
 **Continue with Google** appears only when the password is not configured on
-the server. **Demo mode** is a quiet link at the bottom, never a silent
-fallback.
+the server. There is no demo mode and no anonymous way in.
 
 ---
 
@@ -149,8 +149,8 @@ every task and note it files. Thumbnails show on the row; tap one for the full
 picture.
 
 Bytes never live in a database row. A real account stores them in a private
-Supabase Storage bucket under the owner's id (signed URLs, one hour); a local
-or demo workspace keeps them in IndexedDB. Both need nothing from you, except
+Supabase Storage bucket under the owner's id (signed URLs, one hour); a
+workspace without Supabase keeps them in IndexedDB. Both need nothing from you, except
 that a Supabase project must have `supabase/migrations/0005_attachments.sql`
 applied — it adds the `attachments` column and the bucket with owner-only
 policies.
@@ -163,8 +163,8 @@ Two things make that true.
 
 **No cap for you.** The AI endpoints verify the Supabase session the browser
 sends. A verified owner has no daily request cap (`OPENAI_DAILY_REQUEST_CAP`
-defaults to `0`, meaning none); only a caller with no session — demo mode, or
-a stranger who finds the endpoint — gets the small `OPENAI_GUEST_DAILY_CAP`.
+defaults to `0`, meaning none); only a caller with no session — a stranger who
+finds the endpoint — gets the small `OPENAI_GUEST_DAILY_CAP`.
 
 **A ladder, not a key.** Every call walks `key × model` rungs in order —
 `OPENAI_MODEL`, then `OPENAI_FALLBACK_MODELS`, then the same list on
@@ -267,10 +267,13 @@ bun run test           # 291 unit + component tests
 bun run test:e2e       # 12 end-to-end, across Chromebook / desktop / mobile
 ```
 
-The e2e suite runs entirely in demo mode with no credentials, and checks the
-real journey: sign in → open a class → write a thought → turn it into a task →
-complete it → reload and confirm it stuck. It also asserts every screen renders
-one `h1` with no console errors, which is what catches a broken route.
+The e2e suite signs in with the real password, so it needs `E2E_PASSCODE`
+(and a server with Supabase and `APP_PASSCODE` configured — point
+`E2E_BASE_URL` at `bun run dev`). Without it, only the "the app is not public"
+check runs and the rest is skipped. The journey it checks: sign in → open a
+class → write a thought → turn it into a task → complete it → reload and
+confirm it stuck. It also asserts every screen renders one `h1` with no
+console errors, which is what catches a broken route.
 
 ---
 

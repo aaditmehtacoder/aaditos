@@ -20,7 +20,7 @@ const HORIZON_DAYS = 14;
 export function buildSnapshot(
   workspace: Workspace,
   now: Date,
-  opts: { isDemo: boolean; inbox?: InboxItem[] | undefined },
+  opts: { inbox?: InboxItem[] | undefined } = {},
 ): CompassSnapshot {
   const courseName = new Map(workspace.courses.map((c) => [c.id, c.name]));
 
@@ -72,7 +72,6 @@ export function buildSnapshot(
       detail: i.detail ? i.detail.slice(0, 200) : undefined,
       at: i.at,
     })),
-    isDemo: opts.isDemo,
     courses: workspace.courses.filter((c) => c.active).map((c) => c.name),
     tasks: workspace.tasks
       .filter((t) => t.status !== "archived" && !t.deletedAt)

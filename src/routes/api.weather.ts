@@ -4,7 +4,7 @@ import { fetchWeather } from "@/server/providers/weather";
 
 /**
  * Santa Clara weather from Open-Meteo. No API key, no personal data, so this
- * works in every environment including demo mode.
+ * works in every environment.
  */
 export const Route = createFileRoute("/api/weather")({
   server: {

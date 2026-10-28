@@ -130,7 +130,7 @@ function Avatar({ name, url }: { name: string; url?: string | undefined }) {
 }
 
 function ProfileMenu() {
-  const { profile, isDemo, theme, setTheme } = useOS();
+  const { profile, theme, setTheme } = useOS();
   const { signOut } = useAuth();
   const themes = [
     { value: "light" as const, label: "Light", icon: Sun },
@@ -153,7 +153,7 @@ function ProfileMenu() {
         <DropdownMenuLabel className="text-[12.5px]">
           <span className="block truncate font-medium">{profile.name || "Signed in"}</span>
           <span className="block truncate text-[11.5px] font-normal text-muted-foreground">
-            {isDemo ? "Demo mode · sample data" : profile.email}
+            {profile.email}
           </span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
@@ -185,7 +185,7 @@ function ProfileMenu() {
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => void signOut()} className="text-[12.5px]">
           <LogOut className="size-[14px]" />
-          {isDemo ? "Leave demo mode" : "Sign out"}
+          Sign out
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
