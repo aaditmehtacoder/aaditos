@@ -54,10 +54,11 @@ describe("CompassRequestSchema", () => {
   });
 
   it("rejects an oversized message", () => {
+    // A pasted essay fits; a pasted book does not.
     expect(
       CompassRequestSchema.safeParse({
         ...validCompass,
-        messages: [{ role: "user", content: "x".repeat(4001) }],
+        messages: [{ role: "user", content: "x".repeat(16_001) }],
       }).success,
     ).toBe(false);
   });

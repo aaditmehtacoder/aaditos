@@ -89,12 +89,25 @@ function clientFor(key: string): OpenAI {
  * Returns `null` for failures that are the caller's fault, which no fallback
  * would fix.
  */
-export function classify(error: unknown): { retryable: boolean; reason: string } {
+export function classify(error: unknown): {
+  retryable: boolean;
+  reason: string;
+  /** True when waiting on the same rung cannot help: the request itself is over that model's ceiling. */
+  immediate?: boolean;
+} {
   if (error instanceof OpenAI.APIError) {
-    const status = error.status ?? 0;
+    // A failure mid-stream arrives with no status; the body's code still says what it was.
     const code = String((error as { code?: unknown }).code ?? "");
-    const message = error.message || `HTTP ${status}`;
+    const message = error.message || `HTTP ${error.status ?? 0}`;
+    const status =
+      error.status ??
+      (/rate_limit|insufficient_quota/.test(code) ? 429 : /server_error/.test(code) ? 500 : 0);
     if (status === 429) {
+      if (/request too large/i.test(message)) {
+        // Over this model's tokens-per-minute ceiling outright. No backoff
+        // will make it fit; the next model has a different ceiling.
+        return { retryable: true, immediate: true, reason: `too large for model (${status})` };
+      }
       return {
         retryable: true,
         reason: /quota|billing/i.test(`${code} ${message}`)
@@ -195,8 +208,11 @@ export async function withFallback<T>(
   let attemptNo = 0;
 
   const release = await acquire();
+  const deadKeys = new Set<number>();
   try {
     for (const rung of rungs) {
+      // A rejected key will not start working on its next model.
+      if (deadKeys.has(rung.keyIndex)) continue;
       for (let retry = 0; retry <= sameRungRetries; retry += 1) {
         if (opts.signal?.aborted) {
           throw Object.assign(new Error("Request cancelled."), { name: "AbortError" });
@@ -208,12 +224,16 @@ export async function withFallback<T>(
           return { value, rung, skipped };
         } catch (error) {
           last = error;
-          const { retryable, reason } = classify(error);
+          const { retryable, reason, immediate } = classify(error);
           if (!retryable) throw error;
           // Only the last failure on a rung is recorded as the reason it was skipped.
-          if (retry === sameRungRetries) skipped.push({ rung, reason });
-          // A rejected key will not start working on the next model.
-          if (/key rejected/.test(reason)) break;
+          if (/key rejected/.test(reason)) {
+            deadKeys.add(rung.keyIndex);
+            skipped.push({ rung, reason });
+            break;
+          }
+          if (retry === sameRungRetries || immediate) skipped.push({ rung, reason });
+          if (immediate) break;
         }
       }
     }

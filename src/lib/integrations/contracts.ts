@@ -61,6 +61,8 @@ export interface ProviderCapabilities {
   openaiModels: string[];
   /** How many API keys are configured (1 = no spare). */
   openaiKeys: number;
+  /** The image model behind "draw me…"; always present when `openai` is true. */
+  openaiImageModel?: string | undefined;
   google: boolean;
   supabase: boolean;
   cron: boolean;

@@ -5,11 +5,11 @@ Santa Clara who also builds software.
 
 Three screens, and that is the whole app.
 
-| Screen      | What it is for                                                                    |
-| ----------- | --------------------------------------------------------------------------------- |
-| **Today**   | What is due, what to do next, what happens today, and one box to capture anything. |
-| **Classes** | Each class: what is due in it, and the thoughts and ideas you had about it.        |
-| **Ask**     | A question about any of the above, answered from your real data.                   |
+| Screen      | What it is for                                                                                                                   |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| **Today**   | What is due, what to do next, what happens today, and one box to capture anything.                                               |
+| **Classes** | Each class: what is due in it, and the thoughts and ideas you had about it.                                                      |
+| **Ask**     | A full assistant: your day from your real data, homework help, any number of photos and PDFs, pictures it draws, chats it keeps. |
 
 Settings lives behind the avatar. There is nothing else.
 
@@ -27,17 +27,17 @@ accepts todos; this accepts sentences.
 deadline and never will, so a planner either loses it or invents a fake due
 date for it. Here it is a **note** on the English page, and it can become a
 task later if it turns out to be one. The assistant reads notes too, which is
-what lets it answer *why* something is hard rather than only *when* it is due.
+what lets it answer _why_ something is hard rather than only _when_ it is due.
 
 The capture box files three kinds of thing:
 
-| Kind      | Example                                                     | Where it lands       |
-| --------- | ----------------------------------------------------------- | -------------------- |
-| **task**  | "algebra pset due tues"                                     | Today, and the class |
-| **event** | "robotics build session thursday 3:30 in N102"              | Today's schedule     |
-| **note**  | "I keep messing up the sign when I factor"                  | The class page       |
+| Kind      | Example                                        | Where it lands       |
+| --------- | ---------------------------------------------- | -------------------- |
+| **task**  | "algebra pset due tues"                        | Today, and the class |
+| **event** | "robotics build session thursday 3:30 in N102" | Today's schedule     |
+| **note**  | "I keep messing up the sign when I factor"     | The class page       |
 
-One sentence often contains more than one — a deadline *and* an observation —
+One sentence often contains more than one — a deadline _and_ an observation —
 and both are filed separately.
 
 ---
@@ -81,11 +81,11 @@ fallback.
 The calendar is kept current in three overlapping ways, so no single one
 failing leaves the app stale:
 
-| Where                | How often                    | What it does                                        |
-| -------------------- | ---------------------------- | --------------------------------------------------- |
-| GitHub Actions       | every 15 min, 6am–11pm PT    | Hits `/api/cron/sync`, which **writes to Supabase**. |
-| Vercel Cron          | once a day                   | The floor, if Actions is ever paused.                |
-| The open tab         | every 5 min, and on focus    | Wilcox + weather, straight into the browser.         |
+| Where          | How often                 | What it does                                         |
+| -------------- | ------------------------- | ---------------------------------------------------- |
+| GitHub Actions | every 15 min, 6am–11pm PT | Hits `/api/cron/sync`, which **writes to Supabase**. |
+| Vercel Cron    | once a day                | The floor, if Actions is ever paused.                |
+| The open tab   | every 5 min, and on focus | Wilcox + weather, straight into the browser.         |
 
 `/api/cron/sync` does not just warm a cache — it fetches the Wilcox calendars
 once and persists the normalized result into every active account with the
@@ -113,18 +113,18 @@ The Integrations page (avatar → Integrations, or `/integrations`) shows every
 app with its mark, its state, and the one action that changes it. Everything
 is read-only: the app never writes to another service.
 
-| Provider                | Needs                                  | What it does                                                                         |
-| ----------------------- | -------------------------------------- | ------------------------------------------------------------------------------------ |
-| **Wilcox calendars**    | nothing                                | School, district, athletics and counseling calendars, scraped, normalized, deduped.  |
-| **Santa Clara weather** | nothing                                | Today's conditions from Open-Meteo.                                                  |
-| **Google Classroom**    | OAuth client + Connect                 | Courses, coursework and your own submission state.                                   |
-| **Google Calendar**     | same connection                        | Personal events, next 45 days.                                                       |
-| **Gmail**               | same client + a separate Connect       | Recent mail (7 days, no promotions) into the Inbox. `gmail.readonly`, asked for only when you connect it. |
-| **Aeries**              | API certificate from the district      | The official gradebook: classes, teachers, periods, scores.                          |
-| **GitHub**              | `GITHUB_TOKEN`                         | Issues assigned to you, PRs waiting on you, your open PRs → Inbox.                   |
-| **Slack**               | `SLACK_USER_TOKEN`                     | Messages that mention you, and DMs, last 7 days → Inbox.                             |
-| **Notion**              | `NOTION_TOKEN`                         | Pages edited this week; open rows of `NOTION_TASKS_DATABASE_ID` → Inbox.             |
-| **Assistant**           | `OPENAI_API_KEY`                       | Capture and Ask. Without a key both say so plainly and generate nothing.             |
+| Provider                | Needs                             | What it does                                                                                              |
+| ----------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| **Wilcox calendars**    | nothing                           | School, district, athletics and counseling calendars, scraped, normalized, deduped.                       |
+| **Santa Clara weather** | nothing                           | Today's conditions from Open-Meteo.                                                                       |
+| **Google Classroom**    | OAuth client + Connect            | Courses, coursework and your own submission state.                                                        |
+| **Google Calendar**     | same connection                   | Personal events, next 45 days.                                                                            |
+| **Gmail**               | same client + a separate Connect  | Recent mail (7 days, no promotions) into the Inbox. `gmail.readonly`, asked for only when you connect it. |
+| **Aeries**              | API certificate from the district | The official gradebook: classes, teachers, periods, scores.                                               |
+| **GitHub**              | `GITHUB_TOKEN`                    | Issues assigned to you, PRs waiting on you, your open PRs → Inbox.                                        |
+| **Slack**               | `SLACK_USER_TOKEN`                | Messages that mention you, and DMs, last 7 days → Inbox.                                                  |
+| **Notion**              | `NOTION_TOKEN`                    | Pages edited this week; open rows of `NOTION_TASKS_DATABASE_ID` → Inbox.                                  |
+| **Assistant**           | `OPENAI_API_KEY`                  | Capture and Ask. Without a key both say so plainly and generate nothing.                                  |
 
 **The Inbox.** Gmail, GitHub, Slack and Notion do not write tasks. They feed
 an Inbox panel on Today, each item with its source's mark. **File** sends the
@@ -182,29 +182,30 @@ keeps answering when the first account is out of credit.
 Copy `.env.example` to `.env`. **Every variable is optional** — the app runs
 fully without them.
 
-| Variable                    | Scope  | Purpose                                                          |
-| --------------------------- | ------ | ---------------------------------------------------------------- |
-| `OPENAI_API_KEY`            | server | Enables Capture and Ask.                                          |
-| `OPENAI_API_KEY_FALLBACK`   | server | A spare key on another account. What "never runs out" rests on.   |
-| `OPENAI_MODEL`              | server | Defaults to `gpt-5.6-terra`. See the note in `src/server/env.ts`. |
-| `OPENAI_FALLBACK_MODELS`    | server | Comma list tried after `OPENAI_MODEL`. Default `gpt-5.6-luna,gpt-5.6-sol`. |
-| `OPENAI_MAX_OUTPUT_TOKENS`  | server | Per-response ceiling. Default `1500`.                             |
-| `OPENAI_DAILY_REQUEST_CAP`  | server | Owner's daily stop. Default `0` = none.                           |
-| `OPENAI_GUEST_DAILY_CAP`    | server | Daily calls for a caller with no session. Default `40`.           |
-| `GITHUB_TOKEN`              | server | Fine-grained token, read-only on issues and pull requests.        |
-| `SLACK_USER_TOKEN`          | server | `xoxp-…` user token with `search:read` and `users:read`.          |
-| `NOTION_TOKEN`              | server | Internal integration secret; share pages with it in Notion.       |
-| `NOTION_TASKS_DATABASE_ID`  | server | Optional: a tasks database whose open rows feed the Inbox.        |
-| `AERIES_BASE_URL/CERT/…`    | server | District Aeries API certificate, school code and student id.      |
-| `SAFETY_IDENTIFIER_SALT`    | server | Salt for the hashed `safety_identifier` sent to OpenAI.           |
-| `VITE_SUPABASE_URL`         | client | Supabase project URL (public by design).                          |
-| `VITE_SUPABASE_ANON_KEY`    | client | Supabase anon key (public by design; RLS is the protection).      |
-| `SUPABASE_SERVICE_ROLE_KEY` | server | **Required for the scheduled sync to write.** Bypasses RLS.       |
-| `GOOGLE_CLIENT_ID/SECRET`   | server | Google OAuth client.                                              |
-| `CRON_SECRET`               | server | Protects `/api/cron/sync`. Without it the endpoint returns 503.   |
-| `TOKEN_ENCRYPTION_KEY`      | server | AES-GCM key for the Google refresh token.                         |
-| `APP_PASSWORD`              | server | The one password typed on the sign-in page (`APP_PASSCODE` also works). |
-| `ACCOUNT_PASSWORD_SECRET`   | server | 32+ random chars. Derives each account's real Supabase password.  |
+| Variable                    | Scope  | Purpose                                                                                                                                       |
+| --------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OPENAI_API_KEY`            | server | Enables Capture and Ask.                                                                                                                      |
+| `OPENAI_API_KEY_FALLBACK`   | server | A spare key on another account. What "never runs out" rests on.                                                                               |
+| `OPENAI_MODEL`              | server | Defaults to `gpt-5.6-terra`. See the note in `src/server/env.ts`.                                                                             |
+| `OPENAI_FALLBACK_MODELS`    | server | Comma list tried after `OPENAI_MODEL`. Default: luna, sol, terra, 5.5, 5.4, 5.4-mini, 5.4-nano, 5.2 — each has its own daily budget.          |
+| `OPENAI_IMAGE_MODEL`        | server | The painter behind "draw me…". Default `gpt-image-2`; falls back to `OPENAI_IMAGE_FALLBACK_MODELS`. Needs image credit on the OpenAI account. |
+| `OPENAI_MAX_OUTPUT_TOKENS`  | server | Per-response ceiling. Default `4000`, hard cap `16000`.                                                                                       |
+| `OPENAI_DAILY_REQUEST_CAP`  | server | Owner's daily stop. Default `0` = none.                                                                                                       |
+| `OPENAI_GUEST_DAILY_CAP`    | server | Daily calls for a caller with no session. Default `40`.                                                                                       |
+| `GITHUB_TOKEN`              | server | Fine-grained token, read-only on issues and pull requests.                                                                                    |
+| `SLACK_USER_TOKEN`          | server | `xoxp-…` user token with `search:read` and `users:read`.                                                                                      |
+| `NOTION_TOKEN`              | server | Internal integration secret; share pages with it in Notion.                                                                                   |
+| `NOTION_TASKS_DATABASE_ID`  | server | Optional: a tasks database whose open rows feed the Inbox.                                                                                    |
+| `AERIES_BASE_URL/CERT/…`    | server | District Aeries API certificate, school code and student id.                                                                                  |
+| `SAFETY_IDENTIFIER_SALT`    | server | Salt for the hashed `safety_identifier` sent to OpenAI.                                                                                       |
+| `VITE_SUPABASE_URL`         | client | Supabase project URL (public by design).                                                                                                      |
+| `VITE_SUPABASE_ANON_KEY`    | client | Supabase anon key (public by design; RLS is the protection).                                                                                  |
+| `SUPABASE_SERVICE_ROLE_KEY` | server | **Required for the scheduled sync to write.** Bypasses RLS.                                                                                   |
+| `GOOGLE_CLIENT_ID/SECRET`   | server | Google OAuth client.                                                                                                                          |
+| `CRON_SECRET`               | server | Protects `/api/cron/sync`. Without it the endpoint returns 503.                                                                               |
+| `TOKEN_ENCRYPTION_KEY`      | server | AES-GCM key for the Google refresh token.                                                                                                     |
+| `APP_PASSWORD`              | server | The one password typed on the sign-in page (`APP_PASSCODE` also works).                                                                       |
+| `ACCOUNT_PASSWORD_SECRET`   | server | 32+ random chars. Derives each account's real Supabase password.                                                                              |
 
 Only the two `VITE_`-prefixed variables reach the browser. The production
 client bundle contains no `process.env` reads and no secret values — verified
@@ -220,7 +221,7 @@ supabase db push        # applies supabase/migrations/*
 
 Four tables carry the app: `tasks`, `courses`, `assignments`, `events`, plus
 `notes` for thoughts and ideas, and a private `attachments` storage bucket for
-images (`0005_attachments.sql`). Row Level Security is **enabled and forced** on
+images (`0005_attachments.sql`), and chats plus PDFs (`0006_chat.sql`). Row Level Security is **enabled and forced** on
 every one, with an `auth.uid() = user_id` policy, and `anon` is revoked
 outright so it cannot read private rows even if a policy were dropped later.
 

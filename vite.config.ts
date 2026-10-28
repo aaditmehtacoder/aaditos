@@ -7,6 +7,13 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
+  nitro: {
+    // A picture takes the painter 20–60 s on top of the chat model's own
+    // time. The host's default would cut the stream before it arrived.
+    // Spread through `object`: the wrapper's type lists only a few nitro
+    // keys, but it hands the whole object to nitro unchanged.
+    ...({ vercel: { functions: { maxDuration: 300 } } } as object),
+  },
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this

@@ -81,9 +81,24 @@ export interface CompassSnapshot {
   isDemo: boolean;
 }
 
+/**
+ * One file on a message, as it travels to the server.
+ *
+ * Never the bytes. A signed Storage URL the model fetches itself, so a
+ * conversation with thirty photos and a forty-page PDF is a few kilobytes of
+ * JSON rather than a request the host refuses at 4.5 MB. Demo mode, which
+ * has no Storage, sends a data URL instead and lives with the ceiling.
+ */
+export interface WireAttachment {
+  kind: "image" | "pdf";
+  name: string;
+  url: string;
+}
+
 export interface CompassMessage {
   role: "user" | "assistant";
   content: string;
+  attachments?: WireAttachment[] | undefined;
 }
 
 // ---- renderable tool payloads -------------------------------------------
@@ -125,7 +140,9 @@ export type CompassToolName =
   | "create_daily_plan"
   | "find_schedule_conflicts"
   | "propose_task"
-  | "update_task";
+  | "update_task"
+  /** Not a function tool: the Responses API's built-in painter, shown as a step like the others. */
+  | "generate_image";
 
 export interface CompassProposal {
   tool: "propose_task" | "update_task";
@@ -140,7 +157,17 @@ export type CompassEvent =
   | { type: "tool"; name: CompassToolName; status: "running" }
   | { type: "tool_result"; name: CompassToolName; data: unknown }
   | { type: "proposal"; proposal: CompassProposal }
-  | { type: "done"; usage?: { inputTokens: number; outputTokens: number } | undefined }
+  /**
+   * A picture the model drew. Partial frames arrive first while it paints;
+   * the final one replaces them. `b64` is the encoded bytes, `mime` says how.
+   */
+  | { type: "image"; id: string; b64: string; mime: string; partial: boolean }
+  | {
+      type: "done";
+      usage?: { inputTokens: number; outputTokens: number } | undefined;
+      /** Which model actually answered, after any fallback. */
+      model?: string | undefined;
+    }
   | { type: "error"; code: string; message: string; retryable: boolean };
 
 export interface CompassRequestBody {

@@ -128,7 +128,7 @@ function Connections() {
             <p className="text-[13px] font-medium">Assistant</p>
             <p className="text-[11.5px] text-muted-foreground">
               {config.data?.openai
-                ? `${config.data.openaiModels.join(" → ")} · ${config.data.openaiKeys} key${config.data.openaiKeys === 1 ? "" : "s"}. No daily cap for you.`
+                ? `${config.data.openaiModels.join(" → ")} · ${config.data.openaiKeys} key${config.data.openaiKeys === 1 ? "" : "s"} · pictures by ${config.data.openaiImageModel ?? "gpt-image-2"}. No daily cap for you.`
                 : "No OPENAI_API_KEY on the server."}
             </p>
           </div>

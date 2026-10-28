@@ -5,7 +5,7 @@ import { identifyCaller, limitsFor } from "@/server/auth";
 import { runCompassTurn } from "@/server/compass-runtime";
 import { callerKey, checkRateLimit } from "@/server/rate-limit";
 import { serverEnv } from "@/server/env";
-import { CompassRequestSchema } from "@/server/schemas";
+import { CompassRequestSchema, attachmentUrlAllowed } from "@/server/schemas";
 
 function line(event: CompassEvent): Uint8Array {
   return new TextEncoder().encode(`${JSON.stringify(event)}\n`);
@@ -39,6 +39,23 @@ export const Route = createFileRoute("/api/compass")({
               type: "error",
               code: "invalid_input",
               message: parsed.error.issues[0]?.message ?? "Request did not match the schema.",
+              retryable: false,
+            },
+            422,
+          );
+        }
+
+        // Every file link must point at this app's own private bucket. The
+        // schema checked the shape; only here is the host known.
+        const badFile = parsed.data.messages
+          .flatMap((m) => m.attachments ?? [])
+          .find((a) => !attachmentUrlAllowed(a.url, serverEnv.supabaseUrl));
+        if (badFile) {
+          return errorResponse(
+            {
+              type: "error",
+              code: "invalid_input",
+              message: `"${badFile.name}" is not stored where this app keeps files. Attach it again.`,
               retryable: false,
             },
             422,
@@ -90,6 +107,9 @@ export const Route = createFileRoute("/api/compass")({
                 snapshot: parsed.data.snapshot as never,
                 clientId: parsed.data.clientId,
                 signal: request.signal,
+                // A picture is the one thing here that costs real money per
+                // call, so only the verified owner gets the painter.
+                allowImages: caller.kind === "owner",
               })) {
                 controller.enqueue(line(event));
               }

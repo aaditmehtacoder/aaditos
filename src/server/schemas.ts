@@ -10,10 +10,81 @@ import { z } from "zod";
 
 import { SYNCABLE } from "@/lib/integrations/contracts";
 
-export const CompassMessageSchema = z.object({
-  role: z.enum(["user", "assistant"]),
-  content: z.string().min(1).max(4000),
-});
+/** A data URL for one image: png, jpeg, webp or gif, at most ~1.6 MB encoded. */
+export const ImageDataUrlSchema = z
+  .string()
+  .max(1_700_000)
+  .regex(/^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/, "Not an image data URL");
+
+/** A data URL for one PDF. Demo mode only; signed-in users send a Storage URL. */
+export const PdfDataUrlSchema = z
+  .string()
+  .max(4_000_000)
+  .regex(/^data:application\/pdf;base64,[A-Za-z0-9+/=]+$/, "Not a PDF data URL");
+
+const HttpsUrlSchema = z
+  .string()
+  .max(2048)
+  .regex(/^https:\/\/[^\s]+$/, "Not an https URL");
+
+/**
+ * One file on a chat message. Either a URL the model can fetch — checked
+ * against the app's own Storage host in the route, since a schema cannot see
+ * the environment — or, for demo mode, the bytes themselves as a data URL.
+ */
+export const WireAttachmentSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("image"),
+    name: z.string().max(200),
+    url: z.union([HttpsUrlSchema, ImageDataUrlSchema]),
+  }),
+  z.object({
+    kind: z.literal("pdf"),
+    name: z.string().max(200),
+    url: z.union([HttpsUrlSchema, PdfDataUrlSchema]),
+  }),
+]);
+
+/**
+ * Whether an attachment URL may be handed to the model.
+ *
+ * Only the app's own private bucket, through a signed link. Anything else —
+ * another host, the bucket's public path, a path outside the bucket — is
+ * refused, so the endpoint cannot be used to make OpenAI fetch arbitrary
+ * URLs on this key's bill. Data URLs carry their own bytes and pass.
+ */
+export function attachmentUrlAllowed(url: string, storageOrigin: string | undefined): boolean {
+  if (url.startsWith("data:")) return true;
+  if (!storageOrigin) return false;
+  try {
+    const parsed = new URL(url);
+    const origin = new URL(storageOrigin).origin;
+    return (
+      parsed.protocol === "https:" &&
+      parsed.origin === origin &&
+      parsed.pathname.startsWith("/storage/v1/object/sign/attachments/")
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * One turn of the conversation. The text ceiling is a whole pasted essay or
+ * a screen of code, not a question; an empty message is allowed when it
+ * carries files ("what is this?" is implied by a photo on its own).
+ */
+export const CompassMessageSchema = z
+  .object({
+    role: z.enum(["user", "assistant"]),
+    content: z.string().max(16_000),
+    /** No small cap: with Storage URLs each one is a hundred bytes. */
+    attachments: z.array(WireAttachmentSchema).max(60).optional(),
+  })
+  .refine((m) => m.content.trim().length > 0 || (m.attachments?.length ?? 0) > 0, {
+    message: "A message needs text or a file.",
+    path: ["content"],
+  });
 
 /**
  * The snapshot is data the client already holds, so unknown keys pass through
@@ -46,22 +117,32 @@ export const CompassSnapshotSchema = z
   })
   .passthrough();
 
-export const CompassRequestSchema = z.object({
-  messages: z.array(CompassMessageSchema).min(1).max(24),
-  snapshot: CompassSnapshotSchema,
-  clientId: z.string().min(8).max(64),
-});
+export const CompassRequestSchema = z
+  .object({
+    messages: z.array(CompassMessageSchema).min(1).max(40),
+    snapshot: CompassSnapshotSchema,
+    clientId: z.string().min(8).max(64),
+  })
+  // Demo mode's data URLs share the host's 4.5 MB body limit; this fails
+  // with a sentence instead of a bare 413.
+  .refine(
+    (r) =>
+      r.messages.reduce(
+        (n, m) =>
+          n +
+          (m.attachments ?? []).reduce(
+            (k, a) => k + (a.url.startsWith("data:") ? a.url.length : 0),
+            0,
+          ),
+        0,
+      ) <= 4_000_000,
+    { message: "Those files are too large to send together.", path: ["messages"] },
+  );
 
 /**
  * Capture accepts a whole pasted email, not just a typed line, so the ceiling
  * is generous — but still a ceiling, because the body is billed by the token.
  */
-/** A data URL for one image: png, jpeg, webp or gif, at most ~1.6 MB encoded. */
-export const ImageDataUrlSchema = z
-  .string()
-  .max(1_700_000)
-  .regex(/^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/, "Not an image data URL");
-
 export const CaptureRequestSchema = z
   .object({
     /** Optional when images are attached: a photo alone is enough to file. */

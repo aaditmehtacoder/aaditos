@@ -61,9 +61,41 @@ export const serverEnv = {
     const fallbacks = readList("OPENAI_FALLBACK_MODELS");
     const chain = [
       serverEnv.openaiModel,
-      ...(fallbacks.length > 0 ? fallbacks : ["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"]),
+      ...(fallbacks.length > 0
+        ? fallbacks
+        : // Measured 2026-10-27: on this key every model has its own daily
+          // request budget (50 each) and its own tokens-per-minute ceiling
+          // (terra 10k, luna 60k, 5.4-mini 100k). Eight rungs is eight
+          // budgets, and a request too big for terra's minute fits luna's.
+          [
+            "gpt-5.6-luna",
+            "gpt-5.6-sol",
+            "gpt-5.6-terra",
+            "gpt-5.5",
+            "gpt-5.4",
+            "gpt-5.4-mini",
+            "gpt-5.4-nano",
+            "gpt-5.2",
+          ]),
     ];
     return [...new Set(chain)];
+  },
+  /**
+   * The image model the assistant draws with, and the ones it falls back to.
+   * Image generation runs through the Responses API's `image_generation`
+   * tool, so the chat model stays the same; only the painter changes.
+   */
+  get openaiImageModel(): string {
+    return read("OPENAI_IMAGE_MODEL") ?? "gpt-image-2";
+  },
+  get openaiImageModels(): string[] {
+    const fallbacks = readList("OPENAI_IMAGE_FALLBACK_MODELS");
+    return [
+      ...new Set([
+        serverEnv.openaiImageModel,
+        ...(fallbacks.length > 0 ? fallbacks : ["gpt-image-1.5", "gpt-image-1-mini"]),
+      ]),
+    ];
   },
   /**
    * The one model, used for both answering and filing.
@@ -86,14 +118,16 @@ export const serverEnv = {
   },
 
   /**
-   * Per-response ceiling. Hard-capped at 4000 regardless of the environment:
+   * Per-response ceiling. Hard-capped at 16000 regardless of the environment:
    * a typo adding a zero should cost a truncated answer, not a large bill.
+   * 1500 was the old default and it cut off anything longer than a page,
+   * which for a general assistant is most essays, code and study guides.
    */
   get openaiMaxOutputTokens(): number {
     const raw = read("OPENAI_MAX_OUTPUT_TOKENS");
     const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-    const value = Number.isFinite(parsed) && parsed > 0 ? parsed : 1500;
-    return Math.min(value, 4000);
+    const value = Number.isFinite(parsed) && parsed > 0 ? parsed : 4000;
+    return Math.min(value, 16_000);
   },
   /**
    * Daily AI request ceiling for the signed-in owner. `0` (the default) means
@@ -207,6 +241,7 @@ export function providerCapabilities(): ProviderCapabilities {
     openaiModel: serverEnv.openaiModel,
     openaiModels: serverEnv.openaiModels,
     openaiKeys: serverEnv.openaiApiKeys.length,
+    openaiImageModel: serverEnv.openaiImageModel,
     google: Boolean(serverEnv.googleClientId && serverEnv.googleClientSecret),
     supabase: Boolean(serverEnv.supabaseUrl && serverEnv.supabaseAnonKey),
     cron: Boolean(serverEnv.cronSecret),

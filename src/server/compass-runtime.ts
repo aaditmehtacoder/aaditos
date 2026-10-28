@@ -3,7 +3,11 @@
  *
  * Uses the official OpenAI SDK and the Responses API with:
  *   - streaming output
- *   - strict-schema function calling
+ *   - strict-schema function calling over the user's own workspace
+ *   - the built-in `image_generation` tool, so "draw me…" works in the same
+ *     conversation as "what is due?"
+ *   - images and PDFs as input, by URL, so a conversation full of files
+ *     never has to fit in one request body
  *   - `store: false` (nothing is retained on OpenAI's side)
  *   - a hashed `safety_identifier` so abuse can be traced without exposing who
  *     the user is
@@ -24,45 +28,86 @@ import type {
   CompassToolName,
 } from "@/lib/compass/types";
 
-import { ExhaustedError, NoKeyError, ladder, withFallback, type Rung } from "./ai";
+import { ExhaustedError, NoKeyError, classify, ladder, withFallback, type Rung } from "./ai";
 import { serverEnv } from "./env";
 
 const MAX_TOOL_ROUNDS = 4;
 /** Mid-stream provider failures before any text: how many times to restart the round further down the ladder. */
 const MAX_STREAM_RESTARTS = 2;
+/** Messages of history that travel with each turn. Files in them travel too. */
+export const HISTORY_WINDOW = 20;
+/** Generated pictures leave the model as this. WebP at 85 is a quarter of the PNG. */
+const IMAGE_MIME = "image/webp";
 
 export class CompassConfigError extends Error {
   code = "missing_key" as const;
 }
 
-export function systemInstructions(snapshot: CompassSnapshot): string {
+/**
+ * When every image model reported no budget, the painter is left out of
+ * requests for a while. Without this, each "draw me…" would burn one chat
+ * request per image model before giving up, on an account where the chat
+ * budget is the scarce thing.
+ */
+let imagesDisabledUntil = 0;
+const IMAGES_DISABLED_MS = 30 * 60_000;
+
+export function imagesCurrentlyDisabled(now = Date.now()): boolean {
+  return now < imagesDisabledUntil;
+}
+
+/** Testing hook. */
+export function resetImageAvailability(): void {
+  imagesDisabledUntil = 0;
+}
+
+export function systemInstructions(
+  snapshot: CompassSnapshot,
+  opts: { pictures?: "on" | "off" | "unavailable" } = {},
+): string {
   return [
-    "You are the assistant inside AaditOS, a private planner belonging to one person.",
+    "You are the assistant inside AaditOS: a general assistant — writing, explaining, coding, maths, studying, brainstorming, pictures — that also lives inside one person's private planner and can read it.",
     `That person is ${snapshot.profile.name}, a 14-year-old ninth grader at ${snapshot.profile.school} in ${snapshot.profile.city}.`,
     "",
     "Safety (the user is a minor):",
-    "- Keep everything age-appropriate for a 14-year-old. No sexual, violent, self-harm, extremist, gambling, alcohol/drug, or otherwise adult content.",
+    "- Keep everything age-appropriate for a 14-year-old. No sexual, violent, self-harm, extremist, gambling, alcohol/drug, or otherwise adult content, in text or in pictures.",
     "- Never give medical, legal, or financial advice. Point to a parent, teacher, or counsellor instead.",
     "- If a message suggests self-harm, abuse, or a crisis, stop planning, respond with care, and name a trusted adult and the 988 Suicide & Crisis Lifeline (call or text 988 in the US).",
     "- Do not do graded work for them. Help them understand, plan, outline and revise their own work; never write something they would hand in as theirs.",
     "- Never ask for or repeat passwords, API keys, addresses, or payment details.",
     "",
-    "Read before you answer:",
-    "- Call the read tools first. Never invent a task, a date, a grade, or an event; if a tool returns nothing, say so rather than filling the gap.",
-    "- `list_notes` is the one most answers are missing. Notes are what the user wrote for themselves — what a teacher actually asked for, what they got stuck on, an idea they had. A deadline says a paper is due Friday; a note says the thesis has to be arguable and theirs currently is not. Read them before advising on a class, an assignment, or what to work on.",
-    "- State the numbers you used, so the answer can be checked instead of trusted.",
+    "Files:",
+    "- They can attach any number of images and PDFs. Read every one fully before answering. For a PDF, answer from its contents and cite the page when you can; for a photo, read everything legible in it.",
+    "- If a file is unreadable or missing, say which one, rather than guessing at it.",
     "",
-    "Answer like someone who knows the situation:",
+    "Pictures:",
+    opts.pictures === "unavailable"
+      ? "- Picture-making is switched off right now because the OpenAI account has no image credit. If they ask for a picture, say that in one line (a payment method on the OpenAI billing page turns it on) and offer to describe or plan it in words instead."
+      : opts.pictures === "off"
+        ? "- Picture-making is not available in this session. If they ask for one, say so in one line and help in words instead."
+        : "- When they ask for a picture, drawing, poster, logo, diagram, icon, mockup, or to change an image they attached or you made earlier, call the image_generation tool. Do not describe the tool or ask for permission; make the picture, then say one short line about what you made.",
+    opts.pictures === "on" || opts.pictures === undefined
+      ? "- An image they attached in the latest message is what 'this', 'it' and 'make it…' refer to."
+      : "",
+    "- Pictures must be age-appropriate: no real people's faces, nothing violent or adult, no brand logos they do not own.",
+    "",
+    "Their planner:",
+    "- When the question is about their day, classes, tasks, deadlines, notes, calendar, inbox or what to do next, call the read tools first. Never invent a task, a date, a grade, or an event; if a tool returns nothing, say so rather than filling the gap.",
+    "- `list_notes` is the one most planner answers are missing. Notes are what the user wrote for themselves — what a teacher actually asked for, what they got stuck on, an idea they had. Read them before advising on a class, an assignment, or what to work on.",
+    "- State the numbers you used, so the answer can be checked instead of trusted.",
+    "- For everything else — a general question, homework help, writing, code, an explanation — answer directly without tools.",
+    "",
+    "How to answer:",
     "- Lead with the answer. No preamble, no restating the question, no 'Great question'.",
-    "- Be specific to their actual work. Use their exact task and class names. 'Start the Financial Lit packet — it is 30 minutes and you have 45' beats 'prioritize by deadline'.",
-    "- Short. A few sentences, or a list when there are genuinely several things. Never pad.",
+    "- Be specific to their actual situation. Use their exact task and class names. 'Start the Financial Lit packet — it is 30 minutes and you have 45' beats 'prioritize by deadline'.",
+    "- As long as it needs to be and no longer. One line when one line is the answer; a full explanation, a study guide or working code when that is what was asked for.",
     "- Say the hard thing when it is true. If five assignments are missing, lead with that instead of building an encouraging plan around it.",
     "- Give times in their local timezone, e.g. '4:00 PM'. Say 'tomorrow' and 'Friday', not ISO timestamps.",
-    "- When something is genuinely fine, say so in one line and stop. Do not manufacture work.",
+    "- Markdown: headings only in long answers, fenced code blocks with a language for code, a table when comparing things, bold for the one thing to remember.",
     "",
     "What you can and cannot do:",
     "- `propose_task` and `update_task` save nothing. They put a card in front of the user to confirm. Say plainly that nothing is saved yet.",
-    "- You cannot send messages, email anyone, delete anything, or act outside this app.",
+    "- You cannot send messages, email anyone, delete anything, browse the web, or act outside this app.",
     `- Now is ${snapshot.now} (${snapshot.timezone}). ${snapshot.schoolDay.reason}.`,
     snapshot.schoolDay.nextClass ? `- Next class: ${snapshot.schoolDay.nextClass}.` : "",
     `- Their classes are: ${snapshot.courses.join(", ") || "not synced yet"}.`,
@@ -83,11 +128,72 @@ interface FunctionCallItem {
 
 type InputItem = Record<string, unknown>;
 
+/**
+ * The conversation as Responses API input items.
+ *
+ * A message with files becomes a content array: the text, then each image
+ * as `input_image` and each PDF as `input_file`. Storage links are passed
+ * through for the model to fetch; demo mode's data URLs travel as
+ * `file_data`, which is the only form OpenAI accepts bytes in. Older turns
+ * keep their files too — "what did page 3 say?" has to still work five
+ * messages later — which is why `HISTORY_WINDOW` is a window.
+ */
+export function toInputItems(messages: CompassMessage[]): InputItem[] {
+  return messages.slice(-HISTORY_WINDOW).map((m) => {
+    if (m.role === "assistant") return { role: "assistant", content: m.content };
+    const attachments = m.attachments ?? [];
+    if (attachments.length === 0) return { role: "user", content: m.content };
+
+    const text = m.content.trim();
+    const content: InputItem[] = [{ type: "input_text", text: text || "See the attached files." }];
+    for (const attachment of attachments) {
+      if (attachment.kind === "image") {
+        content.push({ type: "input_image", image_url: attachment.url, detail: "auto" });
+        continue;
+      }
+      // Bytes need a name to be read as a PDF; a link must not carry one
+      // (OpenAI rejects `filename` next to `file_url`), and the link's own
+      // `.pdf` suffix says what it is.
+      const filename = /\.pdf$/i.test(attachment.name) ? attachment.name : `${attachment.name}.pdf`;
+      content.push(
+        attachment.url.startsWith("data:")
+          ? { type: "input_file", filename, file_data: attachment.url }
+          : { type: "input_file", file_url: attachment.url },
+      );
+    }
+    return { role: "user", content };
+  });
+}
+
+/** The painter, as a Responses tool. The chat model decides when to call it. */
+export function imageTool(model: string): Record<string, unknown> {
+  return {
+    type: "image_generation",
+    model,
+    quality: "medium",
+    // The smaller models only take the three fixed sizes.
+    size: /mini/.test(model) ? "1024x1024" : "auto",
+    output_format: "webp",
+    output_compression: 85,
+    // Two rough frames while it paints, so the wait is visible.
+    partial_images: 2,
+    moderation: "auto",
+  };
+}
+
+/** Whether a failure is the image model's, not the chat model's. */
+export function isImageModelFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /gpt-image|image_generation|image model|limit gpt-image|chatgpt-image/i.test(message);
+}
+
 export interface RunOptions {
   messages: CompassMessage[];
   snapshot: CompassSnapshot;
   clientId: string;
   signal?: AbortSignal | undefined;
+  /** Offer the image tool. Off for guests: a picture costs real money on the owner's key. */
+  allowImages?: boolean | undefined;
 }
 
 /**
@@ -107,12 +213,10 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
   }
 
   const safetyIdentifier = await hashIdentifier(opts.clientId, serverEnv.safetyIdentifierSalt);
-  const instructions = systemInstructions(opts.snapshot);
-
-  const input: InputItem[] = opts.messages.slice(-12).map((m) => ({
-    role: m.role,
-    content: m.content,
-  }));
+  const imageModels = serverEnv.openaiImageModels;
+  const pictures = !opts.allowImages ? "off" : imagesCurrentlyDisabled() ? "unavailable" : "on";
+  let instructions = systemInstructions(opts.snapshot, { pictures });
+  const input = toInputItems(opts.messages);
 
   let inputTokens = 0;
   let outputTokens = 0;
@@ -121,9 +225,17 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
   // is not retried; the next round starts below it.
   let rungStart = 0;
   let restarts = 0;
+  // The painter has its own, shorter ladder, walked independently of the chat one.
+  let imageIndex = 0;
+  let imagesOn = pictures === "on";
 
   for (let round = 0; round <= MAX_TOOL_ROUNDS; round += 1) {
     const lastRound = round === MAX_TOOL_ROUNDS;
+    const imageModel = imageModels[imageIndex];
+    const tools = lastRound
+      ? []
+      : [...COMPASS_TOOLS, ...(imagesOn && imageModel ? [imageTool(imageModel)] : [])];
+
     let stream: AsyncIterable<Record<string, unknown>>;
     let rung: Rung;
     try {
@@ -134,7 +246,7 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
               model: current.model,
               instructions,
               input: input as never,
-              tools: lastRound ? [] : (COMPASS_TOOLS as never),
+              tools: tools as never,
               tool_choice: "auto",
               stream: true,
               store: false,
@@ -163,7 +275,9 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
 
     const calls: FunctionCallItem[] = [];
     let sawText = false;
+    let sawImage = false;
     let restartRound = false;
+    let imageFailure: string | null = null;
 
     try {
       for await (const event of stream) {
@@ -174,6 +288,22 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
             sawText = true;
             yield { type: "text", delta };
           }
+        } else if (type === "response.output_item.added") {
+          const item = event["item"] as Record<string, unknown> | undefined;
+          if (item && item["type"] === "image_generation_call") {
+            yield { type: "tool", name: "generate_image", status: "running" };
+          }
+        } else if (type === "response.image_generation_call.partial_image") {
+          const b64 = event["partial_image_b64"];
+          if (typeof b64 === "string" && b64.length > 0) {
+            yield {
+              type: "image",
+              id: String(event["item_id"] ?? ""),
+              b64,
+              mime: IMAGE_MIME,
+              partial: true,
+            };
+          }
         } else if (type === "response.output_item.done") {
           const item = event["item"] as Record<string, unknown> | undefined;
           if (item && item["type"] === "function_call") {
@@ -183,6 +313,23 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
               name: String(item["name"] ?? ""),
               arguments: typeof item["arguments"] === "string" ? item["arguments"] : "{}",
             });
+          } else if (item && item["type"] === "image_generation_call") {
+            const result = item["result"];
+            if (typeof result === "string" && result.length > 0) {
+              sawImage = true;
+              const format = String(item["output_format"] ?? "webp");
+              yield {
+                type: "image",
+                id: String(item["id"] ?? ""),
+                b64: result,
+                mime: `image/${format === "jpg" ? "jpeg" : format}`,
+                partial: false,
+              };
+              yield { type: "tool_result", name: "generate_image", data: { ok: true } };
+            } else {
+              imageFailure = String(item["status"] ?? "failed");
+              yield { type: "tool_result", name: "generate_image", data: { ok: false } };
+            }
           }
         } else if (type === "response.completed" || type === "response.incomplete") {
           const response = event["response"] as Record<string, unknown> | undefined;
@@ -193,6 +340,10 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
           const response = event["response"] as Record<string, unknown> | undefined;
           const err = (response?.["error"] ?? event["error"]) as
             Record<string, unknown> | undefined;
+          const message = String(err?.["message"] ?? "The model could not complete this request.");
+          if (isImageModelFailure(message)) {
+            throw Object.assign(new Error(message), { name: "ImageModelError" });
+          }
           // Nothing has reached the user yet, so the round can quietly start
           // again one rung down instead of surfacing a provider hiccup.
           if (!sawText && restarts < MAX_STREAM_RESTARTS && rungStart + 1 < rungs.length) {
@@ -208,18 +359,55 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
           yield {
             type: "error",
             code: String(err?.["code"] ?? "model_error"),
-            message: String(err?.["message"] ?? "The model could not complete this request."),
+            message,
             retryable: true,
           };
           return;
         }
       }
     } catch (error) {
-      if (!sawText && restarts < MAX_STREAM_RESTARTS && rungStart + 1 < rungs.length) {
-        restarts += 1;
-        rungStart += 1;
+      if (isImageModelFailure(error)) {
+        // The painter failed, not the chat model. Try the next painter on the
+        // same chat rung; when none is left, say so and let text continue.
+        if (imageIndex + 1 < imageModels.length) {
+          console.warn("[compass] image model failed; trying the next", {
+            from: imageModels[imageIndex],
+            reason: error instanceof Error ? error.message.slice(0, 160) : "unknown",
+          });
+          imageIndex += 1;
+          round -= 1;
+          continue;
+        }
+        console.warn("[compass] every image model failed; continuing without pictures", {
+          reason: error instanceof Error ? error.message.slice(0, 160) : "unknown",
+        });
+        if (
+          /Limit 0|payment method|billing|quota/i.test(error instanceof Error ? error.message : "")
+        ) {
+          imagesDisabledUntil = Date.now() + IMAGES_DISABLED_MS;
+        }
+        yield {
+          type: "error",
+          code: "image_unavailable",
+          message: pictureUnavailableMessage(error),
+          retryable: false,
+        };
+        if (sawText) return;
+        // Same question again, now told plainly that it cannot draw, so it
+        // answers in words instead of improvising an SVG.
+        imagesOn = false;
+        instructions = systemInstructions(opts.snapshot, { pictures: "unavailable" });
         round -= 1;
         continue;
+      }
+      if (!sawText && !sawImage && restarts < MAX_STREAM_RESTARTS && rungStart + 1 < rungs.length) {
+        const { retryable } = classify(error);
+        if (retryable) {
+          restarts += 1;
+          rungStart += 1;
+          round -= 1;
+          continue;
+        }
       }
       yield toErrorEvent(error);
       return;
@@ -230,8 +418,18 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
       continue;
     }
 
+    if (imageFailure && !sawText && !sawImage && calls.length === 0) {
+      yield {
+        type: "error",
+        code: "image_failed",
+        message: "The picture could not be made this time. Try describing it differently.",
+        retryable: true,
+      };
+      return;
+    }
+
     if (calls.length === 0) {
-      if (!sawText) {
+      if (!sawText && !sawImage) {
         yield {
           type: "error",
           code: "empty_response",
@@ -240,7 +438,7 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
         };
         return;
       }
-      yield { type: "done", usage: { inputTokens, outputTokens } };
+      yield { type: "done", usage: { inputTokens, outputTokens }, model: rung.model };
       return;
     }
 
@@ -281,6 +479,23 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
   }
 
   yield { type: "done", usage: { inputTokens, outputTokens } };
+}
+
+/**
+ * Why there is no picture, in a sentence the owner can act on. The one
+ * failure seen in practice is an OpenAI project with no payment method: every
+ * image model reports a budget of zero. That is fixed on OpenAI's billing
+ * page, not here, so the message says so.
+ */
+export function pictureUnavailableMessage(error: unknown): string {
+  const raw = error instanceof Error ? error.message : "";
+  if (/Limit 0|rate_limit|payment method|billing|quota/i.test(raw)) {
+    return (
+      "Pictures are off until the OpenAI account has image credit: it currently reports a limit of zero for every image model. " +
+      "Add a payment method at platform.openai.com → Settings → Billing and they will work with no other change. Text answers still work."
+    );
+  }
+  return `The picture could not be made (${raw.slice(0, 140) || "unknown error"}). Text answers still work.`;
 }
 
 function toErrorEvent(error: unknown): CompassEvent {
