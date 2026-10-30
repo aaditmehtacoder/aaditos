@@ -196,10 +196,14 @@ Three things make that hold:
   `src/server/gate.ts` before the app sees it, so the deployment's own URL
   shows nothing. The host's cron call to `/api/cron/sync` is the one
   exception, and that route checks `CRON_SECRET` itself.
+- **A grant.** Typing the number earns the browser a signed, expiring
+  HttpOnly cookie from the portfolio, and the proxy refuses the hidden path
+  without it. The URL on its own opens nothing — not in incognito, not on
+  another computer. Each device walks the resume once.
 - **The password.** Unchanged, see "Signing in". The number is a door, not a lock.
 
-The number lives only in environment variables — here, on Vercel, and as a
-SHA-256 in the portfolio — never in a repository.
+The number lives only in environment variables — here and on Vercel, for both
+projects — never in a repository and never in a browser bundle.
 
 ## Environment
 
