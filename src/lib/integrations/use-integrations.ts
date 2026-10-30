@@ -11,6 +11,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
+import { withBase } from "@/lib/base-path";
 import { newId } from "@/lib/core/ids";
 import { mergeBySourceRef, normalizeEvent } from "@/lib/core/normalize";
 import type { CalendarEvent, IntegrationRecord, SyncRun } from "@/lib/core/types";
@@ -31,7 +32,7 @@ export function useProviderConfig() {
   return useQuery<ProviderCapabilities>({
     queryKey: ["provider-config"],
     queryFn: async () => {
-      const response = await fetch("/api/config");
+      const response = await fetch(withBase("/api/config"));
       if (!response.ok) throw new Error(`Configuration check failed (${response.status})`);
       return (await response.json()) as ProviderCapabilities;
     },
@@ -44,7 +45,7 @@ export function useWeather() {
   return useQuery<WeatherResult>({
     queryKey: ["weather"],
     queryFn: async () => {
-      const response = await fetch("/api/weather");
+      const response = await fetch(withBase("/api/weather"));
       return (await response.json()) as WeatherResult;
     },
     staleTime: 10 * 60_000,
@@ -77,7 +78,7 @@ export function useGoogleStatus() {
   return useQuery<GoogleStatus>({
     queryKey: ["google-status"],
     queryFn: async () => {
-      const response = await fetch("/api/google/status");
+      const response = await fetch(withBase("/api/google/status"));
       if (!response.ok) throw new Error(`Google status failed (${response.status})`);
       return (await response.json()) as GoogleStatus;
     },
@@ -173,7 +174,7 @@ export function useSync() {
       setState({ running: true, error: null });
       setSyncing(true);
       try {
-        const response = await fetch("/api/sync", {
+        const response = await fetch(withBase("/api/sync"), {
           method: "POST",
           headers: { "content-type": "application/json", ...(await authHeaders()) },
           body: JSON.stringify({ providers, userId }),

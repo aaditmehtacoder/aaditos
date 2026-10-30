@@ -1,7 +1,10 @@
 import "./lib/error-capture";
 
+import { BASE_PATH } from "./lib/base-path";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
+import { serverEnv } from "./server/env";
+import { admit } from "./server/gate";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -47,8 +50,10 @@ function isH3SwallowedErrorBody(body: string): boolean {
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
+      const verdict = admit(request, { secret: serverEnv.gateSecret, base: BASE_PATH });
+      if (verdict.kind === "reject") return verdict.response;
       const handler = await getServerEntry();
-      const response = await handler.fetch(request, env, ctx);
+      const response = await handler.fetch(verdict.request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);
     } catch (error) {
       console.error(error);

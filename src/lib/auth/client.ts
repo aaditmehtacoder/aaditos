@@ -10,6 +10,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { supabaseAnonKey, supabaseConfigured, supabaseUrl } from "./config";
+import { withBase } from "@/lib/base-path";
 
 let client: SupabaseClient | null = null;
 
@@ -22,6 +23,6 @@ export function getSupabase(): SupabaseClient | null {
 }
 
 export function authCallbackUrl(): string {
-  if (typeof window === "undefined") return "/auth/callback";
-  return `${window.location.origin}/auth/callback`;
+  if (typeof window === "undefined") return withBase("auth/callback");
+  return `${window.location.origin}${withBase("auth/callback")}`;
 }

@@ -32,6 +32,21 @@ function readList(name: string): string[] {
 }
 
 export const serverEnv = {
+  /**
+   * The address people actually use, when it is not the host this runs on:
+   * `https://aaditmehta.dev` while the app is proxied from there. Used for
+   * OAuth redirect URIs, which must match what the browser will come back to.
+   */
+  get publicOrigin(): string | undefined {
+    return read("APP_PUBLIC_ORIGIN")?.replace(/\/+$/, "");
+  },
+  /**
+   * Shared with the proxy in front of the app. When set, a request without
+   * it in `x-aaditos-gate` gets a 404 — the deployment itself answers no one.
+   */
+  get gateSecret(): string | undefined {
+    return read("AADITOS_GATE_SECRET");
+  },
   get openaiApiKey(): string | undefined {
     return read("OPENAI_API_KEY");
   },

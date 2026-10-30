@@ -17,6 +17,7 @@ import { AutoSync } from "@/components/os/auto-sync";
 import { ServiceWorkerRegistrar } from "@/components/os/service-worker";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/lib/auth/context";
+import { withBase } from "@/lib/base-path";
 import { OSProvider } from "@/lib/store";
 
 import appCss from "../styles.css?url";
@@ -80,7 +81,7 @@ function ErrorComponent({ error: thrown, reset }: ErrorComponentProps) {
             Try again
           </button>
           <a
-            href="/"
+            href={withBase("/")}
             className="inline-flex items-center justify-center rounded-[9px] border border-border bg-card px-4 py-2 text-[13px] font-medium text-foreground transition-colors duration-150 hover:bg-accent"
           >
             Go to Today
@@ -119,14 +120,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         content:
           "A private personal operating system for school, projects and focus, with Compass reading the real data behind it.",
       },
-      { property: "og:image", content: "/icons/icon-512.png" },
+      { property: "og:image", content: withBase("icons/icon-512.png") },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:title", content: "AaditOS" },
       {
         name: "twitter:description",
         content: "A private personal operating system for school, projects and focus.",
       },
-      { name: "twitter:image", content: "/icons/icon-512.png" },
+      { name: "twitter:image", content: withBase("icons/icon-512.png") },
     ],
     links: [
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -140,10 +141,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,300;9..144,400&display=swap",
       },
       { rel: "stylesheet", href: appCss },
-      { rel: "manifest", href: "/manifest.webmanifest" },
-      { rel: "apple-touch-icon", href: "/icons/icon-192.png" },
-      { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
-      { rel: "icon", href: "/icons/icon-192.png", type: "image/png", sizes: "192x192" },
+      { rel: "manifest", href: withBase("manifest.webmanifest") },
+      { rel: "apple-touch-icon", href: withBase("icons/icon-192.png") },
+      { rel: "icon", href: withBase("favicon.ico"), type: "image/x-icon" },
+      { rel: "icon", href: withBase("icons/icon-192.png"), type: "image/png", sizes: "192x192" },
     ],
   }),
   shellComponent: RootShell,

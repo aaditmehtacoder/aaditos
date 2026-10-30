@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LAST_ROUTE_KEY } from "@/lib/auth/config";
 import { useAuth } from "@/lib/auth/context";
+import { withBase } from "@/lib/base-path";
 
 interface PasscodeAccount {
   id: string;
@@ -49,7 +50,7 @@ function SignInPage() {
 
   useEffect(() => {
     let live = true;
-    void fetch("/api/auth/passcode")
+    void fetch(withBase("/api/auth/passcode"))
       .then((r) => r.json() as Promise<{ configured: boolean; accounts: PasscodeAccount[] }>)
       .then((data) => {
         if (!live) return;

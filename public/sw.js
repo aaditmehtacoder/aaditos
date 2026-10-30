@@ -10,19 +10,24 @@
  *     Compass conversation is ever written to the cache.
  */
 
-const VERSION = "aaditos-v2";
+const VERSION = "aaditos-v3";
+
+// The app may be mounted under a prefix (aaditmehta.dev/<number>/). The
+// worker is registered with that prefix as its scope, so every path here is
+// built from it rather than from "/".
+const BASE = new URL(self.registration.scope).pathname;
 const SHELL_CACHE = `${VERSION}-shell`;
 const ASSET_CACHE = `${VERSION}-assets`;
 const PAGE_CACHE = `${VERSION}-pages`;
 const DATA_CACHE = `${VERSION}-data`;
 
 const SHELL_ASSETS = [
-  "/offline.html",
-  "/manifest.webmanifest",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
-  "/icons/icon-maskable-512.png",
-];
+  "offline.html",
+  "manifest.webmanifest",
+  "icons/icon-192.png",
+  "icons/icon-512.png",
+  "icons/icon-maskable-512.png",
+].map((path) => BASE + path);
 
 const NAVIGATION_TIMEOUT_MS = 3500;
 
@@ -60,8 +65,8 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
 
   // Never cache anything that could contain personal data.
-  if (url.pathname.startsWith("/api/")) {
-    if (url.pathname === "/api/weather") {
+  if (url.pathname.startsWith(BASE + "api/")) {
+    if (url.pathname === BASE + "api/weather") {
       event.respondWith(staleWhileRevalidate(request, DATA_CACHE));
     }
     return;
@@ -73,9 +78,9 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (
-    url.pathname.startsWith("/_build/") ||
-    url.pathname.startsWith("/assets/") ||
-    url.pathname.startsWith("/icons/") ||
+    url.pathname.startsWith(BASE + "_build/") ||
+    url.pathname.startsWith(BASE + "assets/") ||
+    url.pathname.startsWith(BASE + "icons/") ||
     /\.(?:js|css|woff2?|png|svg|ico|webmanifest)$/.test(url.pathname)
   ) {
     event.respondWith(cacheFirst(request, ASSET_CACHE));
@@ -93,7 +98,7 @@ async function navigationStrategy(request) {
   } catch {
     const cached = await cache.match(request);
     if (cached) return cached;
-    const fallback = await caches.match("/offline.html");
+    const fallback = await caches.match(BASE + "offline.html");
     return (
       fallback ??
       new Response("Offline", { status: 503, headers: { "content-type": "text/plain" } })

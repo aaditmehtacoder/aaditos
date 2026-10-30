@@ -18,6 +18,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { withBase } from "@/lib/base-path";
 import type { Profile } from "@/lib/core/types";
 import { APP_TZ } from "@/lib/core/time";
 
@@ -167,7 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let payload: { ok?: boolean; accessToken?: string; refreshToken?: string; message?: string };
     try {
-      const response = await fetch("/api/auth/passcode", {
+      const response = await fetch(withBase("/api/auth/passcode"), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(account ? { account, passcode } : { passcode }),

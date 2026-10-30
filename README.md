@@ -177,6 +177,30 @@ keeps answering when the first account is out of credit.
 
 ---
 
+## Behind the resume
+
+The app has no address of its own. It is mounted at
+`aaditmehta.dev/<a long number>/`, and the way to that number is on the
+portfolio: scroll to the bottom of aaditmehta.dev, open **Resume**, scroll to
+the bottom of the resume, press the small **resume** button, and type the
+number. Then the password.
+
+Three things make that hold:
+
+- **A base path.** `APP_BASE_PATH=/<number>` at build time becomes Vite's
+  `base`, TanStack Start's router basepath and Nitro's `baseURL`, so every
+  route, asset, fetch, icon and the service worker live under the prefix.
+  `src/lib/base-path.ts` is the one place hand-written URLs get it from.
+- **A gate.** The portfolio's proxy sends `x-aaditos-gate`. With
+  `AADITOS_GATE_SECRET` set, a request without it gets a 404 from
+  `src/server/gate.ts` before the app sees it, so the deployment's own URL
+  shows nothing. The host's cron call to `/api/cron/sync` is the one
+  exception, and that route checks `CRON_SECRET` itself.
+- **The password.** Unchanged, see "Signing in". The number is a door, not a lock.
+
+The number lives only in environment variables — here, on Vercel, and as a
+SHA-256 in the portfolio — never in a repository.
+
 ## Environment
 
 Copy `.env.example` to `.env`. **Every variable is optional** — the app runs
@@ -203,6 +227,9 @@ fully without them.
 | `SUPABASE_SERVICE_ROLE_KEY` | server | **Required for the scheduled sync to write.** Bypasses RLS.                                                                                   |
 | `GOOGLE_CLIENT_ID/SECRET`   | server | Google OAuth client.                                                                                                                          |
 | `CRON_SECRET`               | server | Protects `/api/cron/sync`. Without it the endpoint returns 503.                                                                               |
+| `APP_BASE_PATH`             | build  | The prefix the app is mounted under, e.g. `/123…`. Default `/`. See "Behind the resume".                                                      |
+| `AADITOS_GATE_SECRET`       | server | Required in `x-aaditos-gate` on every request when set; otherwise 404. Shared with the portfolio's proxy.                                     |
+| `APP_PUBLIC_ORIGIN`         | server | The origin people reach the app at (`https://aaditmehta.dev`) when it differs from the host. Used for OAuth redirect URIs.                    |
 | `TOKEN_ENCRYPTION_KEY`      | server | AES-GCM key for the Google refresh token.                                                                                                     |
 | `APP_PASSWORD`              | server | The one password typed on the sign-in page (`APP_PASSCODE` also works).                                                                       |
 | `ACCOUNT_PASSWORD_SECRET`   | server | 32+ random chars. Derives each account's real Supabase password.                                                                              |

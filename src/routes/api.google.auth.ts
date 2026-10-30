@@ -1,23 +1,30 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { withBase } from "@/lib/base-path";
 import { newId } from "@/lib/core/ids";
 import { GMAIL_SCOPE } from "@/server/providers/gmail";
 import { buildConsentUrl, googleConfigured } from "@/server/providers/google";
+import { serverEnv } from "@/server/env";
 import { encryptionReady, writeGoogleSession } from "@/server/google-session";
 
 /**
  * The redirect URI must match the one registered in Google Cloud exactly.
  *
- * Behind a proxy (Vercel) the forwarded headers are authoritative. Otherwise
- * the request's own protocol is used — guessing from the hostname got
+ * When the app is reached through another site's proxy, the address people
+ * use is not the host this runs on, so `APP_PUBLIC_ORIGIN` names it. Otherwise,
+ * behind a proxy (Vercel) the forwarded headers are authoritative, and failing
+ * that the request's own protocol is used — guessing from the hostname got
  * `http://127.0.0.1:4173` wrong by upgrading it to https.
  */
 export function googleRedirectUri(request: Request): string {
+  const path = withBase("api/google/callback");
+  const fixed = serverEnv.publicOrigin;
+  if (fixed) return `${fixed}${path}`;
   const url = new URL(request.url);
   const host = request.headers.get("x-forwarded-host") ?? url.host;
   const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
   const protocol = forwardedProto ?? url.protocol.replace(":", "");
-  return `${protocol}://${host}/api/google/callback`;
+  return `${protocol}://${host}${path}`;
 }
 
 /**
@@ -69,7 +76,7 @@ function problem(message: string): Response {
      <body style="font:15px/1.5 system-ui;padding:2rem;max-width:34rem">
        <h1 style="font-size:1.05rem">Google is not ready yet</h1>
        <p style="color:#555">${escapeHtml(message)}</p>
-       <p><a href="/integrations">Back to Integrations</a></p>
+       <p><a href="${withBase("integrations")}">Back to Integrations</a></p>
      </body>`,
     { status: 503, headers: { "content-type": "text/html; charset=utf-8" } },
   );

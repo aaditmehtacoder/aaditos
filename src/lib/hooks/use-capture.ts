@@ -10,6 +10,7 @@
 import { useCallback } from "react";
 import { toast } from "sonner";
 
+import { withBase } from "@/lib/base-path";
 import { authHeaders, clientId } from "@/lib/compass/client";
 import { APP_TZ } from "@/lib/core/time";
 import type { Attachment, NoteKind } from "@/lib/core/types";
@@ -78,7 +79,7 @@ export function useCapture() {
 
       let response: Response;
       try {
-        response = await fetch("/api/capture", {
+        response = await fetch(withBase("/api/capture"), {
           method: "POST",
           headers: { "content-type": "application/json", ...(await authHeaders()) },
           body: JSON.stringify({

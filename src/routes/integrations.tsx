@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Panel, Pill } from "@/components/os/primitives";
 import { ProviderMark, type ProviderMarkId } from "@/components/os/provider-marks";
 import { Button } from "@/components/ui/button";
+import { withBase } from "@/lib/base-path";
 import { relativeTimeLabel } from "@/lib/core/time";
 import type { IntegrationRecord } from "@/lib/core/types";
 import {
@@ -199,7 +200,10 @@ function buildCards(opts: {
             url: "https://console.cloud.google.com/apis/credentials",
           },
       action: google.configured ? (
-        <ConnectLink href="/api/google/auth" label={google.connected ? "Reconnect" : "Connect"} />
+        <ConnectLink
+          href={withBase("api/google/auth")}
+          label={google.connected ? "Reconnect" : "Connect"}
+        />
       ) : undefined,
     },
     {
@@ -232,7 +236,7 @@ function buildCards(opts: {
       action:
         google.configured && google.connected ? (
           <ConnectLink
-            href="/api/google/auth?scope=gmail"
+            href={withBase("api/google/auth?scope=gmail")}
             label={google.gmail ? "Reconnect" : "Connect Gmail"}
           />
         ) : undefined,

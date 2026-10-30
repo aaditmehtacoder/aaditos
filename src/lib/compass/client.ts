@@ -1,6 +1,7 @@
 /** Browser-side helpers for talking to the Compass endpoints. */
 
 import { getSupabase } from "@/lib/auth/client";
+import { withBase } from "@/lib/base-path";
 import { newId } from "@/lib/core/ids";
 import { TaskDraftSchema, type TaskDraft } from "@/lib/core/nl-task";
 import { APP_TZ } from "@/lib/core/time";
@@ -52,7 +53,7 @@ export interface StreamOptions {
 export async function streamCompass(opts: StreamOptions): Promise<void> {
   let response: Response;
   try {
-    response = await fetch("/api/compass", {
+    response = await fetch(withBase("/api/compass"), {
       method: "POST",
       headers: { "content-type": "application/json", ...(await authHeaders()) },
       body: JSON.stringify({
@@ -128,7 +129,7 @@ export async function proposeTaskFromText(
   ctx: { courses: string[]; projects: string[] },
 ): Promise<ProposeResult> {
   try {
-    const response = await fetch("/api/compass/task", {
+    const response = await fetch(withBase("/api/compass/task"), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({

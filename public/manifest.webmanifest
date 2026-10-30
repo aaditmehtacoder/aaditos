@@ -2,34 +2,31 @@
   "name": "AaditOS",
   "short_name": "AaditOS",
   "description": "A private planner: today, your classes, and one box for everything else.",
-  "id": "/",
-  "start_url": "/",
-  "scope": "/",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#F7F7F4",
   "theme_color": "#4F46E5",
-  "categories": [
-    "productivity",
-    "education"
-  ],
+  "categories": ["productivity", "education"],
   "lang": "en-US",
   "dir": "ltr",
   "icons": [
     {
-      "src": "/icons/icon-192.png",
+      "src": "icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-512.png",
+      "src": "icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-maskable-512.png",
+      "src": "icons/icon-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
@@ -38,17 +35,17 @@
   "shortcuts": [
     {
       "name": "Today",
-      "url": "/",
+      "url": "./",
       "description": "What is due and what happens today"
     },
     {
       "name": "Classes",
-      "url": "/classes",
+      "url": "./classes",
       "description": "Every class, and what you thought about it"
     },
     {
       "name": "Ask",
-      "url": "/ask",
+      "url": "./ask",
       "description": "Ask about your day"
     }
   ]

@@ -11,6 +11,7 @@ import { useEffect, type ReactNode } from "react";
 
 import { useAuth } from "@/lib/auth/context";
 import { LAST_ROUTE_KEY } from "@/lib/auth/config";
+import { stripBase } from "@/lib/base-path";
 
 function ShellSkeleton() {
   return (
@@ -45,7 +46,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (status !== "signed-out") return;
     try {
-      window.sessionStorage.setItem(LAST_ROUTE_KEY, location.href);
+      window.sessionStorage.setItem(LAST_ROUTE_KEY, stripBase(location.href));
     } catch {
       /* storage unavailable */
     }

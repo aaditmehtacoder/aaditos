@@ -6,6 +6,7 @@
  */
 
 import { useEffect } from "react";
+import { BASE_PATH, withBase } from "@/lib/base-path";
 
 export function ServiceWorkerRegistrar() {
   useEffect(() => {
@@ -13,9 +14,11 @@ export function ServiceWorkerRegistrar() {
     if (import.meta.env.DEV) return;
 
     const register = () => {
-      navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch((error: unknown) => {
-        console.warn("[pwa] service worker registration failed", error);
-      });
+      navigator.serviceWorker
+        .register(withBase("sw.js"), { scope: BASE_PATH })
+        .catch((error: unknown) => {
+          console.warn("[pwa] service worker registration failed", error);
+        });
     };
 
     if (document.readyState === "complete") register();
