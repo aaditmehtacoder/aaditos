@@ -56,6 +56,12 @@ describe("several Google accounts in one sealed cookie", () => {
     expect(mainAccount(accounts)?.email).toBe("main@gmail.com");
   });
 
+  it("never treats a mailbox-only account as the calendar account", () => {
+    expect(
+      mainAccount([account("mail-only@gmail.com", `openid email ${GMAIL_SCOPE}`)]),
+    ).toBeUndefined();
+  });
+
   it("holds five accounts inside a browser's 4 KB cookie limit", () => {
     const five = Array.from({ length: MAX_GOOGLE_ACCOUNTS }, (_, i) =>
       account(`someone.with.a.long.name${i}@school-district.example.net`),

@@ -159,9 +159,14 @@ export async function readGoogleAccounts(): Promise<GoogleAccount[]> {
   return accountsFrom(await readSealed());
 }
 
-/** The account Calendar and Classroom read from: the first one that granted them. */
+/**
+ * The account Calendar and Classroom read from: the first one that granted
+ * them. None when every connected account is a mailbox only — falling back
+ * to one of those made Classroom ask to "reconnect" an account that never
+ * had it, and labelled a mailbox as the calendar account.
+ */
 export function mainAccount(accounts: GoogleAccount[]): GoogleAccount | undefined {
-  return accounts.find((a) => /calendar|classroom/.test(a.scope)) ?? accounts[0];
+  return accounts.find((a) => /calendar|classroom/.test(a.scope));
 }
 
 export async function readOauthState(): Promise<string | undefined> {
