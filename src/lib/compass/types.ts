@@ -142,7 +142,11 @@ export type CompassToolName =
   | "propose_task"
   | "update_task"
   /** Not a function tool: the Responses API's built-in painter, shown as a step like the others. */
-  | "generate_image";
+  | "generate_image"
+  /** Not a function tool either: the Responses API's built-in web search. */
+  | "web_search"
+  /** Real photos of real things, looked up server-side (Wikipedia's lead images). */
+  | "find_images";
 
 export interface CompassProposal {
   tool: "propose_task" | "update_task";

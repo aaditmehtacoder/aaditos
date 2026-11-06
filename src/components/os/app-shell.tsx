@@ -11,6 +11,7 @@ import {
   Settings,
   Sparkles,
   Sun,
+  User,
 } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 
@@ -100,31 +101,17 @@ function SyncButton() {
   );
 }
 
-function Avatar({ name, url }: { name: string; url?: string | undefined }) {
-  const initials = name
-    .split(" ")
-    .map((p) => p[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-  if (url) {
-    return (
-      <img
-        src={url}
-        alt=""
-        width={26}
-        height={26}
-        className="size-[26px] shrink-0 rounded-full border border-border object-cover"
-      />
-    );
-  }
+/**
+ * The account button: a plain person glyph. Not initials and not the account
+ * photo — a default Google photo is the owner's initial on a coloured tile.
+ */
+function Avatar() {
   return (
     <span
       aria-hidden
-      className="grid size-[26px] shrink-0 place-items-center rounded-full border border-border bg-card text-[10.5px] font-semibold"
+      className="grid size-[26px] shrink-0 place-items-center rounded-full border border-border bg-card text-muted-foreground"
     >
-      {initials || "A"}
+      <User className="size-[14px]" strokeWidth={2} />
     </span>
   );
 }
@@ -146,7 +133,7 @@ function ProfileMenu() {
           aria-label="Account and preferences"
           className="grid size-8 shrink-0 place-items-center rounded-[9px] transition-colors duration-150 hover:bg-secondary"
         >
-          <Avatar name={profile.name} url={profile.avatarUrl} />
+          <Avatar />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
@@ -213,14 +200,14 @@ function OfflineBanner() {
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { workspace } = useOS();
-  const title = TITLES[pathname] ?? (pathname.startsWith("/classes/") ? "Class" : "AaditOS");
+  const title = TITLES[pathname] ?? (pathname.startsWith("/classes/") ? "Class" : "Planner");
 
   useEffect(() => {
     document.documentElement.classList.toggle("reduce-motion", workspace.preferences.reducedMotion);
   }, [workspace.preferences.reducedMotion]);
 
   useEffect(() => {
-    document.title = `${title} · AaditOS`;
+    document.title = title;
   }, [title]);
 
   // Heights are dvh, not vh: in tablet mode a Chromebook's on-screen keyboard

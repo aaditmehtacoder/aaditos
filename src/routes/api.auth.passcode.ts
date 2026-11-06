@@ -29,7 +29,9 @@ export const Route = createFileRoute("/api/auth/passcode")({
         json(
           {
             configured: passcodeConfigured(),
-            accounts: PASSCODE_ACCOUNTS.map(({ id, label, email }) => ({ id, label, email })),
+            // Ids and labels only. This answers before sign-in, so it must not
+            // say whose accounts these are.
+            accounts: PASSCODE_ACCOUNTS.map(({ id, label }) => ({ id, label })),
           },
           200,
         ),

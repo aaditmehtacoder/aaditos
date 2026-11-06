@@ -7,7 +7,7 @@ import { getSupabase } from "@/lib/auth/client";
 import { LAST_ROUTE_KEY } from "@/lib/auth/config";
 
 export const Route = createFileRoute("/auth/callback")({
-  head: () => ({ meta: [{ title: "Signing in · AaditOS" }] }),
+  head: () => ({ meta: [{ title: "Signing in" }] }),
   component: AuthCallbackPage,
 });
 

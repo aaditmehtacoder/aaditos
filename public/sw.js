@@ -1,5 +1,5 @@
 /**
- * AaditOS service worker.
+ * Service worker.
  *
  * Deliberately conservative about what it stores:
  *   - The app shell, icons and build assets are cached so the app opens offline.
@@ -10,9 +10,9 @@
  *     Compass conversation is ever written to the cache.
  */
 
-const VERSION = "aaditos-v3";
+const VERSION = "planner-v4";
 
-// The app may be mounted under a prefix (aaditmehta.dev/<number>/). The
+// The app may be mounted under a prefix (example.com/<number>/). The
 // worker is registered with that prefix as its scope, so every path here is
 // built from it rather than from "/".
 const BASE = new URL(self.registration.scope).pathname;

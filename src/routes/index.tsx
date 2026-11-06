@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Today · AaditOS" },
+      { title: "Today" },
       { name: "description", content: "What is due, what is next, and what happens today." },
     ],
   }),
@@ -286,7 +286,6 @@ function RecentNotes() {
 
 function TodayPage() {
   const { now, school, mustDoToday, availableMin, doneToday } = useToday();
-  const { profile } = useOS();
   const weather = useWeather();
 
   const summary = [
@@ -302,9 +301,7 @@ function TodayPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-[22px] font-semibold tracking-tight">
-            {greeting(now)}, {profile.name.split(" ")[0] || "Aadit"}.
-          </h1>
+          <h1 className="text-[22px] font-semibold tracking-tight">{greeting(now)}.</h1>
           <p className="mt-1 text-[13px] text-muted-foreground">{summary}</p>
         </div>
         {weather.data?.ok ? (

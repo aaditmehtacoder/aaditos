@@ -6,6 +6,8 @@
  *   - strict-schema function calling over the user's own workspace
  *   - the built-in `image_generation` tool, so "draw me…" works in the same
  *     conversation as "what is due?"
+ *   - the built-in `web_search` tool, for anything current, with sources
+ *   - `find_images`, real photos from Wikipedia, which needs no image credit
  *   - images and PDFs as input, by URL, so a conversation full of files
  *     never has to fit in one request body
  *   - `store: false` (nothing is retained on OpenAI's side)
@@ -30,6 +32,7 @@ import type {
 
 import { ExhaustedError, NoKeyError, classify, ladder, withFallback, type Rung } from "./ai";
 import { serverEnv } from "./env";
+import { FIND_IMAGES_TOOL, findImages } from "./image-search";
 
 const MAX_TOOL_ROUNDS = 4;
 /** Mid-stream provider failures before any text: how many times to restart the round further down the ladder. */
@@ -63,11 +66,12 @@ export function resetImageAvailability(): void {
 
 export function systemInstructions(
   snapshot: CompassSnapshot,
-  opts: { pictures?: "on" | "off" | "unavailable" } = {},
+  opts: { pictures?: "on" | "off" | "unavailable"; web?: boolean } = {},
 ): string {
+  const web = opts.web ?? true;
   return [
-    "You are the assistant inside AaditOS: a general assistant — writing, explaining, coding, maths, studying, brainstorming, pictures — that also lives inside one person's private planner and can read it.",
-    `That person is ${snapshot.profile.name}, a 14-year-old ninth grader at ${snapshot.profile.school} in ${snapshot.profile.city}.`,
+    "You are a helpful, knowledgeable general assistant: writing, explaining, coding, maths, science, history, languages, studying, brainstorming, current events and pictures. You also live inside one person's private planner and can read it.",
+    `The person is a 14-year-old ninth grader at ${snapshot.profile.school} in ${snapshot.profile.city}.`,
     "",
     "Safety (the user is a minor):",
     "- Keep everything age-appropriate for a 14-year-old. No sexual, violent, self-harm, extremist, gambling, alcohol/drug, or otherwise adult content, in text or in pictures.",
@@ -76,44 +80,72 @@ export function systemInstructions(
     "- Do not do graded work for them. Help them understand, plan, outline and revise their own work; never write something they would hand in as theirs.",
     "- Never ask for or repeat passwords, API keys, addresses, or payment details.",
     "",
+    "How to answer:",
+    "- Lead with the answer. No preamble, no restating the question, no 'Great question'.",
+    "- As long as it needs to be and no longer. One line when one line is the answer; a full explanation, a worked solution, a study guide or working code when that is what was asked for.",
+    "- Be specific to their actual situation when it is about their planner. Use their exact task and class names.",
+    "- Say the hard thing when it is true. If five assignments are missing, lead with that instead of building an encouraging plan around it.",
+    "- Give times in their local timezone, e.g. '4:00 PM'. Say 'tomorrow' and 'Friday', not ISO timestamps.",
+    "",
+    "Formatting (your reply is rendered as Markdown, with LaTeX maths rendered by KaTeX):",
+    "- Write every piece of maths in LaTeX: inline as \\( ... \\), and display equations on their own line as \\[ ... \\]. That includes simple fractions, powers and roots: write \\( \\frac{3}{4} \\) rather than 3/4, \\( x^2 \\) rather than x^2, \\( \\sqrt{2} \\) rather than sqrt(2). Use \\times and \\div for multiplication and division signs. Never put maths in backticks or code blocks.",
+    "- For a maths or science problem, show the working one step per line, as a numbered list or with each step in display maths, and finish with the answer in bold or in display maths.",
+    "- Use a Markdown table whenever you compare things or list items that share attributes. Keep cells short. A table cell can hold inline maths.",
+    "- Use ## and ### headings to organise longer answers, bullet and numbered lists for options and steps, **bold** for key terms, and > quotes for quoted text. A short answer gets no headings.",
+    "- Put code in fenced code blocks with a language tag, e.g. ```python.",
+    "- Never write raw HTML.",
+    "",
     "Files:",
     "- They can attach any number of images and PDFs. Read every one fully before answering. For a PDF, answer from its contents and cite the page when you can; for a photo, read everything legible in it.",
     "- If a file is unreadable or missing, say which one, rather than guessing at it.",
     "",
+    web ? "The web:" : null,
+    web
+      ? "- You can search the web. Search for anything current or time-sensitive — news, sports, prices, releases, schedules, recent events — and whenever you are not sure of a fact. Do not search for things you know well or for questions about their planner. Cite what you found with inline markdown links to the sources."
+      : null,
+    web ? "" : null,
     "Pictures:",
+    "- To show what something real looks like (an animal, a place, a landmark, an organ, a machine, an artwork, a historical figure), call `find_images`, then put the best one to three results in your answer as markdown images: ![Short caption — Wikipedia](exact image URL). Put each image on its own line, right where it helps. Only ever use image URLs a tool returned; never invent or guess one.",
     opts.pictures === "unavailable"
-      ? "- Picture-making is switched off right now because the OpenAI account has no image credit. If they ask for a picture, say that in one line (a payment method on the OpenAI billing page turns it on) and offer to describe or plan it in words instead."
+      ? "- Making new pictures is switched off right now because the OpenAI account has no image credit. If they ask you to draw, design or generate a picture, say that in one line (a payment method on the OpenAI billing page turns it on), then offer real pictures with find_images or a description in words."
       : opts.pictures === "off"
-        ? "- Picture-making is not available in this session. If they ask for one, say so in one line and help in words instead."
-        : "- When they ask for a picture, drawing, poster, logo, diagram, icon, mockup, or to change an image they attached or you made earlier, call the image_generation tool. Do not describe the tool or ask for permission; make the picture, then say one short line about what you made.",
+        ? "- Making new pictures is not available in this session. If they ask for one, say so in one line and offer real pictures with find_images or help in words instead."
+        : "- When they ask for a new picture, drawing, poster, logo, diagram, icon, mockup, or to change an image they attached or you made earlier, call the image_generation tool. Do not describe the tool or ask for permission; make the picture, then say one short line about what you made.",
     opts.pictures === "on" || opts.pictures === undefined
       ? "- An image they attached in the latest message is what 'this', 'it' and 'make it…' refer to."
-      : "",
-    "- Pictures must be age-appropriate: no real people's faces, nothing violent or adult, no brand logos they do not own.",
+      : null,
+    "- Pictures must be age-appropriate: no real people's faces in pictures you make, nothing violent or adult, no brand logos they do not own.",
     "",
     "Their planner:",
     "- When the question is about their day, classes, tasks, deadlines, notes, calendar, inbox or what to do next, call the read tools first. Never invent a task, a date, a grade, or an event; if a tool returns nothing, say so rather than filling the gap.",
     "- `list_notes` is the one most planner answers are missing. Notes are what the user wrote for themselves — what a teacher actually asked for, what they got stuck on, an idea they had. Read them before advising on a class, an assignment, or what to work on.",
     "- State the numbers you used, so the answer can be checked instead of trusted.",
-    "- For everything else — a general question, homework help, writing, code, an explanation — answer directly without tools.",
-    "",
-    "How to answer:",
-    "- Lead with the answer. No preamble, no restating the question, no 'Great question'.",
-    "- Be specific to their actual situation. Use their exact task and class names. 'Start the Financial Lit packet — it is 30 minutes and you have 45' beats 'prioritize by deadline'.",
-    "- As long as it needs to be and no longer. One line when one line is the answer; a full explanation, a study guide or working code when that is what was asked for.",
-    "- Say the hard thing when it is true. If five assignments are missing, lead with that instead of building an encouraging plan around it.",
-    "- Give times in their local timezone, e.g. '4:00 PM'. Say 'tomorrow' and 'Friday', not ISO timestamps.",
-    "- Markdown: headings only in long answers, fenced code blocks with a language for code, a table when comparing things, bold for the one thing to remember.",
+    "- For everything else — a general question, homework help, writing, code, an explanation — answer directly without the planner tools.",
     "",
     "What you can and cannot do:",
     "- `propose_task` and `update_task` save nothing. They put a card in front of the user to confirm. Say plainly that nothing is saved yet.",
-    "- You cannot send messages, email anyone, delete anything, browse the web, or act outside this app.",
+    "- You cannot send messages, email anyone, delete anything, or act outside this app.",
     `- Now is ${snapshot.now} (${snapshot.timezone}). ${snapshot.schoolDay.reason}.`,
-    snapshot.schoolDay.nextClass ? `- Next class: ${snapshot.schoolDay.nextClass}.` : "",
+    snapshot.schoolDay.nextClass ? `- Next class: ${snapshot.schoolDay.nextClass}.` : null,
     `- Their classes are: ${snapshot.courses.join(", ") || "not synced yet"}.`,
   ]
-    .filter(Boolean)
+    .filter((line): line is string => line !== null)
     .join("\n");
+}
+
+/** The Responses API's own web search, kept small so it fits the tighter per-minute budgets. */
+export function webSearchTool(timezone: string): Record<string, unknown> {
+  return {
+    type: "web_search",
+    search_context_size: "low",
+    user_location: { type: "approximate", country: "US", timezone },
+  };
+}
+
+/** Whether a failure is the web search tool's, so the turn can carry on without it. */
+export function isWebSearchFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /web_search|web search/i.test(message);
 }
 
 interface FunctionCallItem {
@@ -212,7 +244,8 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
   const safetyIdentifier = await hashIdentifier(opts.clientId, serverEnv.safetyIdentifierSalt);
   const imageModels = serverEnv.openaiImageModels;
   const pictures = !opts.allowImages ? "off" : imagesCurrentlyDisabled() ? "unavailable" : "on";
-  let instructions = systemInstructions(opts.snapshot, { pictures });
+  let webOn = true;
+  let instructions = systemInstructions(opts.snapshot, { pictures, web: webOn });
   const input = toInputItems(opts.messages);
 
   let inputTokens = 0;
@@ -231,7 +264,12 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
     const imageModel = imageModels[imageIndex];
     const tools = lastRound
       ? []
-      : [...COMPASS_TOOLS, ...(imagesOn && imageModel ? [imageTool(imageModel)] : [])];
+      : [
+          ...COMPASS_TOOLS,
+          FIND_IMAGES_TOOL,
+          ...(webOn ? [webSearchTool(opts.snapshot.timezone)] : []),
+          ...(imagesOn && imageModel ? [imageTool(imageModel)] : []),
+        ];
 
     let stream: AsyncIterable<Record<string, unknown>>;
     let rung: Rung;
@@ -249,7 +287,7 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
               store: false,
               safety_identifier: safetyIdentifier,
               max_output_tokens: serverEnv.openaiMaxOutputTokens,
-              metadata: { app: "aaditos", surface: "compass" },
+              metadata: { app: "planner", surface: "assistant" },
             },
             { signal: opts.signal },
           ) as unknown as Promise<AsyncIterable<Record<string, unknown>>>,
@@ -266,6 +304,16 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
         });
       }
     } catch (error) {
+      if (webOn && isWebSearchFailure(error)) {
+        // A model that will not take the search tool still answers without it.
+        console.warn("[compass] web search refused; continuing without it", {
+          reason: error instanceof Error ? error.message.slice(0, 160) : "unknown",
+        });
+        webOn = false;
+        instructions = systemInstructions(opts.snapshot, { pictures, web: false });
+        round -= 1;
+        continue;
+      }
       yield toErrorEvent(error);
       return;
     }
@@ -289,6 +337,8 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
           const item = event["item"] as Record<string, unknown> | undefined;
           if (item && item["type"] === "image_generation_call") {
             yield { type: "tool", name: "generate_image", status: "running" };
+          } else if (item && item["type"] === "web_search_call") {
+            yield { type: "tool", name: "web_search", status: "running" };
           }
         } else if (type === "response.image_generation_call.partial_image") {
           const b64 = event["partial_image_b64"];
@@ -310,6 +360,13 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
               name: String(item["name"] ?? ""),
               arguments: typeof item["arguments"] === "string" ? item["arguments"] : "{}",
             });
+          } else if (item && item["type"] === "web_search_call") {
+            const action = item["action"] as Record<string, unknown> | undefined;
+            yield {
+              type: "tool_result",
+              name: "web_search",
+              data: { query: typeof action?.["query"] === "string" ? action["query"] : undefined },
+            };
           } else if (item && item["type"] === "image_generation_call") {
             const result = item["result"];
             if (typeof result === "string" && result.length > 0) {
@@ -393,7 +450,7 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
         // Same question again, now told plainly that it cannot draw, so it
         // answers in words instead of improvising an SVG.
         imagesOn = false;
-        instructions = systemInstructions(opts.snapshot, { pictures: "unavailable" });
+        instructions = systemInstructions(opts.snapshot, { pictures: "unavailable", web: webOn });
         round -= 1;
         continue;
       }
@@ -430,7 +487,7 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
         yield {
           type: "error",
           code: "empty_response",
-          message: "Compass returned an empty response. Try rephrasing your question.",
+          message: "The assistant returned an empty response. Try rephrasing your question.",
           retryable: true,
         };
         return;
@@ -450,7 +507,10 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
         parsed = {};
       }
 
-      const outcome = runTool(name, parsed, opts.snapshot);
+      const outcome =
+        name === "find_images"
+          ? { data: await lookUpImages(parsed), proposal: undefined }
+          : runTool(name, parsed, opts.snapshot);
       yield { type: "tool_result", name, data: outcome.data };
       if (outcome.proposal) yield { type: "proposal", proposal: outcome.proposal };
 
@@ -476,6 +536,13 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
   }
 
   yield { type: "done", usage: { inputTokens, outputTokens } };
+}
+
+async function lookUpImages(args: unknown): Promise<unknown> {
+  const a = (args && typeof args === "object" ? args : {}) as { query?: unknown; limit?: unknown };
+  const query = typeof a.query === "string" ? a.query : "";
+  const limit = typeof a.limit === "number" ? a.limit : 4;
+  return findImages(query, limit);
 }
 
 /**

@@ -212,7 +212,7 @@ export async function fetchWilcoxEvents(opts: FetchOptions = {}): Promise<Wilcox
             {
               headers: {
                 accept: "text/html",
-                "user-agent": "AaditOS/1.0 (personal school calendar sync)",
+                "user-agent": "planner/1.0 (personal school calendar sync)",
               },
               signal: AbortSignal.timeout(10_000),
             },

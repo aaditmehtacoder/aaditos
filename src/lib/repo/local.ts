@@ -22,13 +22,14 @@ import type {
   UUID,
   Workspace,
 } from "@/lib/core/types";
+import { storageKey } from "@/lib/storage-keys";
 
 import { clearBlobsWithPrefix, deleteBlob, getBlob, putBlob } from "./blobs";
 import { defaultPreferences, emptyWorkspace } from "./seed";
 import type { AttachmentInput, ImportResult, NoteInput, Repository, TaskInput } from "./types";
 
 const SCHEMA_VERSION = 1;
-const KEY_PREFIX = "aaditos:v1:workspace:";
+const KEY_PREFIX = storageKey("v1:workspace:");
 
 export class StorageUnavailableError extends Error {
   constructor(message: string) {
@@ -45,7 +46,7 @@ interface Persisted {
 function hasStorage(): boolean {
   try {
     if (typeof window === "undefined" || !window.localStorage) return false;
-    const probe = "__aaditos_probe__";
+    const probe = storageKey("probe");
     window.localStorage.setItem(probe, "1");
     window.localStorage.removeItem(probe);
     return true;
@@ -362,5 +363,5 @@ function structuredCopy<T>(value: T): T {
 }
 
 export function localUserIdFor(email: string): UUID {
-  return stableId(`aaditos:user:${email.toLowerCase()}`);
+  return stableId(`local-user:${email.toLowerCase()}`);
 }

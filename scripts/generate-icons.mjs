@@ -18,19 +18,21 @@ const BRAND = [79, 70, 229];
 const INK = [255, 255, 255];
 
 /**
- * The mark, rasterized from the same polygon as `src/components/os/logo.tsx`
+ * The mark, rasterized from the same outline as `src/components/os/logo.tsx`
  * so the PWA icon and the in-app SVG can never drift apart.
  *
- * Points are in the SVG's own 24-unit space: apex, bottom-right, centre notch,
- * bottom-left. The notch is what makes it read as an A and as a needle rather
- * than a plain triangle.
+ * A four-point sparkle: an astroid-like curve, x = r·cos³ᐟ²·⁴ t, traced in 48
+ * steps on the SVG's own 24-unit grid, centred on (12, 12). The exponent below
+ * 3 fattens the arms so it still reads at 16px.
  */
-const MARK_POINTS = [
-  [12, 5.1],
-  [17.4, 18.6],
-  [12, 15.55],
-  [6.6, 18.6],
-];
+const MARK_POINTS = Array.from({ length: 48 }, (_, i) => {
+  const t = (i / 48) * Math.PI * 2;
+  const shape = (v) => Math.sign(v) * Math.abs(v) ** 2.4;
+  return [
+    Math.round((12 + 7 * shape(Math.cos(t))) * 100) / 100,
+    Math.round((12 + 7 * shape(Math.sin(t))) * 100) / 100,
+  ];
+});
 
 /** Even-odd point-in-polygon. The renderer supersamples this per pixel. */
 function inside(px, py, points) {
@@ -178,3 +180,31 @@ for (const target of targets) {
   writeFileSync(resolve(OUT_DIR, target.name), draw(target.size, { maskable: target.maskable }));
   console.log(`wrote public/icons/${target.name} (${target.size}x${target.size})`);
 }
+
+/**
+ * favicon.ico holding PNG frames, which every current browser reads. 32 for
+ * the tab, 16 for old toolbars, 256 for anything that wants it large.
+ */
+function ico(sizes) {
+  const frames = sizes.map((size) => ({ size, data: draw(size, { maskable: false }) }));
+  const header = Buffer.alloc(6);
+  header.writeUInt16LE(0, 0);
+  header.writeUInt16LE(1, 2);
+  header.writeUInt16LE(frames.length, 4);
+  let offset = 6 + 16 * frames.length;
+  const entries = frames.map(({ size, data }) => {
+    const entry = Buffer.alloc(16);
+    entry[0] = size >= 256 ? 0 : size;
+    entry[1] = size >= 256 ? 0 : size;
+    entry.writeUInt16LE(1, 4); // planes
+    entry.writeUInt16LE(32, 6); // bits per pixel
+    entry.writeUInt32LE(data.length, 8);
+    entry.writeUInt32LE(offset, 12);
+    offset += data.length;
+    return entry;
+  });
+  return Buffer.concat([header, ...entries, ...frames.map((f) => f.data)]);
+}
+
+writeFileSync(resolve(OUT_DIR, "../favicon.ico"), ico([16, 32, 256]));
+console.log("wrote public/favicon.ico (16, 32, 256)");

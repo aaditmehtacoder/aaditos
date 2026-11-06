@@ -114,7 +114,7 @@ export async function exchangeCode(opts: {
   }
   if (!data.refresh_token) {
     throw new Error(
-      "Google did not return a refresh token. Remove AaditOS at myaccount.google.com/permissions and connect again.",
+      "Google did not return a refresh token. Remove this app at myaccount.google.com/permissions and connect again.",
     );
   }
 

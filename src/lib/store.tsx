@@ -41,13 +41,19 @@ import type {
 import { LocalRepository } from "@/lib/repo/local";
 import { emptyWorkspace } from "@/lib/repo/seed";
 import { SupabaseRepository } from "@/lib/repo/supabase";
+import { storageKey } from "@/lib/storage-keys";
 import type { AttachmentInput, NoteInput, Repository, TaskInput } from "@/lib/repo/types";
 
 /**
  * Events the user captured or confirmed, kept on their own calendar so a
  * provider sync — which replaces one calendar wholesale — cannot delete them.
  */
-export const CAPTURED_CALENDAR_ID = "aaditos:captured";
+export const CAPTURED_CALENDAR_ID = storageKey("captured");
+
+/** Captured events saved under an earlier calendar id are still captured events. */
+function isCaptured(calendarId: string): boolean {
+  return calendarId === CAPTURED_CALENDAR_ID || calendarId.endsWith(":captured");
+}
 
 export interface CaptureEventInput {
   title: string;
@@ -150,7 +156,7 @@ interface OSState {
 }
 
 const Ctx = createContext<OSState | null>(null);
-const THEME_KEY = "aaditos:theme";
+const THEME_KEY = storageKey("theme");
 
 function repositoryFor(session: AuthSession): Repository {
   if (supabaseConfigured) return new SupabaseRepository(() => session.profile);
@@ -537,10 +543,14 @@ export function OSProvider({ children }: { children: ReactNode }) {
         updatedAt: now,
       };
 
-      const kept = workspaceRef.current.events.filter(
-        (e) => e.calendarId === CAPTURED_CALENDAR_ID && e.id !== event.id,
-      );
-      await importEvents([CAPTURED_CALENDAR_ID], [...kept, event]);
+      // Events captured under an earlier calendar id move onto the current
+      // one here, so the calendar is replaced as one set and nothing is lost.
+      const previous = workspaceRef.current.events.filter((e) => isCaptured(e.calendarId));
+      const calendars = [...new Set([CAPTURED_CALENDAR_ID, ...previous.map((e) => e.calendarId)])];
+      const kept = previous
+        .filter((e) => e.id !== event.id)
+        .map((e) => ({ ...e, calendarId: CAPTURED_CALENDAR_ID }));
+      await importEvents(calendars, [...kept, event]);
       return event;
     },
     [importEvents, userId],

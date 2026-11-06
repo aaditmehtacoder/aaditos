@@ -12,13 +12,12 @@ import { withBase } from "@/lib/base-path";
 interface PasscodeAccount {
   id: string;
   label: string;
-  email: string;
 }
 
 export const Route = createFileRoute("/signin")({
   head: () => ({
     meta: [
-      { title: "Sign in · AaditOS" },
+      { title: "Sign in" },
       { name: "description", content: "Sign in to your private planner." },
     ],
   }),
@@ -92,10 +91,7 @@ function SignInPage() {
   return (
     <main className="flex min-h-dvh items-center justify-center bg-background px-6 py-12">
       <div className="w-full max-w-[320px]">
-        <div className="flex items-center gap-2">
-          <LogoMark className="size-7" />
-          <span className="text-[15px] font-semibold tracking-tight">AaditOS</span>
-        </div>
+        <LogoMark className="size-7" />
 
         <h1 className="mt-8 display text-[25px]">Sign in</h1>
 
@@ -134,7 +130,6 @@ function SignInPage() {
                         type="button"
                         role="radio"
                         aria-checked={selected}
-                        title={option.email}
                         onClick={() => setAccount(option.id)}
                         className={
                           selected

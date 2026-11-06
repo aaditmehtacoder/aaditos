@@ -20,7 +20,7 @@ import { useOS } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/integrations")({
-  head: () => ({ meta: [{ title: "Integrations · AaditOS" }] }),
+  head: () => ({ meta: [{ title: "Integrations" }] }),
   // Optional keys, so a plain <Link to="/integrations"> needs no search prop.
   validateSearch: (search: Record<string, unknown>): { google?: string; message?: string } => {
     const out: { google?: string; message?: string } = {};

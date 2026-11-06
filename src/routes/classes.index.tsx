@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/classes/")({
   head: () => ({
     meta: [
-      { title: "Classes · AaditOS" },
+      { title: "Classes" },
       { name: "description", content: "Every class, what is due in it, and what you thought." },
     ],
   }),

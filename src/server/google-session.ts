@@ -4,7 +4,7 @@
  * In an httpOnly, sealed cookie — AES-GCM encrypted with `TOKEN_ENCRYPTION_KEY`
  * and never readable from JavaScript. That keeps the only long-lived Google
  * secret off the client and out of any database, which matters because the
- * default AaditOS deployment has no database at all.
+ * default deployment has no database at all.
  *
  * The sealing is done here rather than by the framework: TanStack Start
  * dropped its h3-backed `useSession` helpers, and a cookie this app encrypts
@@ -29,13 +29,15 @@ export interface GoogleSessionData {
 export class EncryptionKeyMissingError extends Error {
   constructor() {
     super(
-      "TOKEN_ENCRYPTION_KEY is not set. AaditOS will not store a Google refresh token without it.",
+      "TOKEN_ENCRYPTION_KEY is not set. The app will not store a Google refresh token without it.",
     );
     this.name = "EncryptionKeyMissingError";
   }
 }
 
-const COOKIE = "aaditos_google";
+const COOKIE = "planner_google";
+/** The cookie's earlier name. Still read, so nobody has to reconnect; replaced on the next write. */
+const LEGACY_COOKIE = "aaditos_google";
 const MAX_AGE = 60 * 60 * 24 * 180;
 
 const COOKIE_OPTIONS = {
@@ -58,7 +60,7 @@ function requireKey(): void {
 export async function readGoogleSession(): Promise<GoogleSessionData> {
   if (!encryptionReady()) return {};
   try {
-    const sealed = getCookie(COOKIE);
+    const sealed = getCookie(COOKIE) ?? getCookie(LEGACY_COOKIE);
     if (!sealed) return {};
     const parsed = JSON.parse(await decryptSecret(sealed)) as unknown;
     return parsed && typeof parsed === "object" ? (parsed as GoogleSessionData) : {};
@@ -78,8 +80,10 @@ export async function writeGoogleSession(patch: GoogleSessionData): Promise<void
     if (next[key] === undefined) delete next[key];
   }
   setCookie(COOKIE, await encryptSecret(JSON.stringify(next)), COOKIE_OPTIONS);
+  if (getCookie(LEGACY_COOKIE)) deleteCookie(LEGACY_COOKIE, { path: "/" });
 }
 
 export async function clearGoogleSession(): Promise<void> {
   deleteCookie(COOKIE, { path: "/" });
+  deleteCookie(LEGACY_COOKIE, { path: "/" });
 }

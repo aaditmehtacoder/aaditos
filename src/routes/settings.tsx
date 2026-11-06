@@ -23,7 +23,7 @@ import { useProviderConfig, useSync } from "@/lib/integrations/use-integrations"
 import { useOS } from "@/lib/store";
 
 export const Route = createFileRoute("/settings")({
-  head: () => ({ meta: [{ title: "Settings · AaditOS" }] }),
+  head: () => ({ meta: [{ title: "Settings" }] }),
   component: SettingsPage,
 });
 
@@ -155,7 +155,7 @@ function DataSection() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `aaditos-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `planner-backup-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success("Exported");

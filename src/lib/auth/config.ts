@@ -6,6 +6,8 @@
  * migrations in `supabase/migrations` install.
  */
 
+import { storageKey } from "@/lib/storage-keys";
+
 const url = import.meta.env["VITE_SUPABASE_URL"] as string | undefined;
 const anonKey = import.meta.env["VITE_SUPABASE_ANON_KEY"] as string | undefined;
 
@@ -13,4 +15,4 @@ export const supabaseUrl = url?.trim() || undefined;
 export const supabaseAnonKey = anonKey?.trim() || undefined;
 export const supabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
-export const LAST_ROUTE_KEY = "aaditos:last-route";
+export const LAST_ROUTE_KEY = storageKey("last-route");

@@ -62,7 +62,7 @@ vi.mock("@/lib/auth/config", () => ({
   supabaseConfigured: false,
   supabaseUrl: undefined,
   supabaseAnonKey: undefined,
-  LAST_ROUTE_KEY: "aaditos:last-route",
+  LAST_ROUTE_KEY: "planner:last-route",
 }));
 
 vi.mock("@tanstack/react-router", () => ({

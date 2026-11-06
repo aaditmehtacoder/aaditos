@@ -1,31 +1,31 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { differenceInCalendarDays } from "date-fns";
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  Check,
   Download,
   FileText,
-  ImagePlus,
   KeyRound,
   Loader2,
-  MessageSquare,
-  Paperclip,
   PanelLeft,
+  Pencil,
   Plus,
-  Send,
-  Sparkles,
+  RotateCcw,
+  SquarePen,
   Square,
   Trash2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { CompassAnswer } from "@/components/os/compass-answer";
 import { ProposalCard, ToolResultBlock } from "@/components/os/compass-blocks";
-import { EmptyState, Panel, Pill } from "@/components/os/primitives";
+import { ImageWithLightbox } from "@/components/os/image-lightbox";
+import { CopyButton, Markdown } from "@/components/os/markdown";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Textarea } from "@/components/ui/textarea";
 import {
   MAX_LOCAL_PDF_BYTES,
   MAX_PDF_BYTES,
@@ -37,6 +37,7 @@ import {
 import type { ChatFile, ChatSummary } from "@/lib/chat/types";
 import { useProviderConfig } from "@/lib/integrations/use-integrations";
 import {
+  TOOL_DONE_LABEL,
   TOOL_LABEL,
   useCompassChat,
   type OutgoingFile,
@@ -49,10 +50,10 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/ask")({
   head: () => ({
     meta: [
-      { title: "Ask · AaditOS" },
+      { title: "Ask" },
       {
         name: "description",
-        content: "Ask anything: your day, your classes, a PDF, a photo, or a picture to draw.",
+        content: "Ask anything: homework, writing, code, maths, the news, a PDF or a photo.",
       },
     ],
   }),
@@ -60,11 +61,11 @@ export const Route = createFileRoute("/ask")({
 });
 
 const SUGGESTIONS = [
-  "What should I do right now?",
-  "What is due this week?",
-  "Explain this like I'm new to it",
-  "Draw a poster for the robotics club",
-  "Quiz me on what I attached",
+  "What should I work on right now?",
+  "Explain how to add 3/4 + 5/6",
+  "Compare mitosis and meiosis in a table",
+  "Show me pictures of a Komodo dragon",
+  "What's in the news today?",
 ];
 
 interface Pending extends OutgoingFile {
@@ -75,11 +76,13 @@ interface Pending extends OutgoingFile {
 function AskPage() {
   const config = useProviderConfig();
   const chat = useCompassChat();
-  const { turns, busy, uploading, send, stop, retry, fileStore } = chat;
+  const { turns, busy, uploading, send, stop, retry, edit, fileStore } = chat;
   const [input, setInput] = useState("");
   const [pending, setPending] = useState<Pending[]>([]);
   const [dragging, setDragging] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [atBottom, setAtBottom] = useState(true);
+  const atBottomRef = useRef(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -87,6 +90,7 @@ function AskPage() {
 
   const configured = config.data?.openai ?? false;
   const local = fileStore.kind === "local";
+  const empty = turns.length === 0;
 
   useEffect(
     () => () => pending.forEach((p) => p.previewUrl && URL.revokeObjectURL(p.previewUrl)),
@@ -193,21 +197,44 @@ function AskPage() {
       return prev.filter((p) => p.key !== key);
     });
 
-  const submit = () => {
-    const text = input.trim();
-    if ((!text && pending.length === 0) || busy || uploading) return;
+  const followAgain = () => {
+    atBottomRef.current = true;
+    setAtBottom(true);
+  };
+
+  const submit = (text = input) => {
+    const clean = text.trim();
+    if ((!clean && pending.length === 0) || busy || uploading || !configured) return;
     const files = pending;
     setInput("");
     setPending([]);
-    void send(text, files);
+    followAgain();
+    void send(clean, files);
   };
 
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  // Follow the answer as it streams, unless the reader has scrolled up to
+  // read something earlier; then leave them there and offer a way back.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (el && atBottomRef.current) el.scrollTop = el.scrollHeight;
   }, [turns]);
 
-  const canSend =
-    configured && !busy && !uploading && (input.trim().length > 0 || pending.length > 0);
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 96;
+    atBottomRef.current = near;
+    setAtBottom((prev) => (prev === near ? prev : near));
+  };
+
+  const scrollToBottom = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    followAgain();
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  };
+
+  const lastAssistant = [...turns].reverse().find((t) => t.role === "assistant");
 
   const list = (
     <ChatList
@@ -220,10 +247,29 @@ function AskPage() {
         inputRef.current?.focus();
       }}
       onOpen={(id) => {
+        followAgain();
         void chat.openChat(id);
         setSidebarOpen(false);
       }}
       onDelete={(id) => void chat.deleteChat(id)}
+    />
+  );
+
+  const composer = (
+    <Composer
+      inputRef={inputRef}
+      fileRef={fileRef}
+      input={input}
+      setInput={setInput}
+      pending={pending}
+      removePending={removePending}
+      addFiles={addFiles}
+      onSubmit={() => submit()}
+      onStop={stop}
+      busy={busy}
+      uploading={uploading}
+      configured={configured}
+      local={local}
     />
   );
 
@@ -232,18 +278,32 @@ function AskPage() {
     // Chromebook's on-screen keyboard is guaranteed to shrink. Measured, not
     // guessed: top bar 53 + main's 20/20 padding = 93, plus the 52px bottom nav
     // below the sm breakpoint.
-    <div className="flex h-[calc(100dvh-145px)] gap-5 sm:h-[calc(100dvh-93px)]">
-      <aside className="hidden w-56 shrink-0 flex-col lg:flex">{list}</aside>
+    <div className="flex h-[calc(100dvh-145px)] gap-4 sm:h-[calc(100dvh-93px)]">
+      <aside className="hidden w-60 shrink-0 flex-col border-r border-border pr-3 lg:flex">
+        {list}
+      </aside>
 
-      <section className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-start justify-between gap-3 pb-3">
-          <div className="flex min-w-0 items-start gap-2">
+      <section className="relative flex min-w-0 flex-1 flex-col">
+        {dragging ? (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 z-30 grid place-items-center rounded-[18px] border-2 border-dashed border-primary/50 bg-background/85 backdrop-blur-sm"
+          >
+            <div className="text-center">
+              <p className="text-[15px] font-medium">Drop files here</p>
+              <p className="mt-1 text-[12.5px] text-muted-foreground">Images and PDFs</p>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="flex h-9 shrink-0 items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-1">
             <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
               <SheetTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="mt-0.5 size-8 shrink-0 lg:hidden"
+                  className="size-8 shrink-0 lg:hidden"
                   aria-label="Open chats"
                 >
                   <PanelLeft className="size-4" />
@@ -254,256 +314,303 @@ function AskPage() {
                 {list}
               </SheetContent>
             </Sheet>
-            <div className="min-w-0">
-              <h1 className="text-[22px] font-semibold tracking-tight">Ask</h1>
-              <p className="mt-1 text-[13px] text-muted-foreground">
-                Anything. It reads your tasks, classes, calendar and notes, your photos and PDFs,
-                and it can draw.
-              </p>
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
             {config.isLoading ? null : configured ? (
-              <Pill
-                tone="success"
-                title={`Models: ${(config.data?.openaiModels ?? []).join(" → ")}`}
+              <span
+                className="truncate px-1 text-[13px] font-medium text-muted-foreground"
+                title={`Falls back through: ${(config.data?.openaiModels ?? []).join(" → ")}`}
               >
                 {config.data?.openaiModel}
-              </Pill>
-            ) : (
-              <Pill tone="warning">Not configured</Pill>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              className="hidden h-7 gap-1.5 text-[12px] lg:inline-flex"
-              onClick={() => {
-                chat.newChat();
-                inputRef.current?.focus();
-              }}
-              disabled={turns.length === 0}
-            >
-              <Plus className="size-3.5" aria-hidden /> New chat
-            </Button>
+              </span>
+            ) : null}
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0"
+            aria-label="New chat"
+            title="New chat"
+            disabled={empty}
+            onClick={() => {
+              chat.newChat();
+              inputRef.current?.focus();
+            }}
+          >
+            <SquarePen className="size-4" aria-hidden />
+          </Button>
         </div>
 
         {!config.isLoading && !configured ? (
-          <Panel className="mb-4">
-            <div className="px-4 py-4">
-              <p className="flex items-start gap-2 text-[12.5px] text-muted-foreground">
-                <KeyRound className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-                <span>
-                  This needs an OpenAI key. Set{" "}
-                  <code className="rounded bg-secondary px-1">OPENAI_API_KEY</code> on the server to
-                  turn it on. Everything else works without it, and nothing is faked in the
-                  meantime.
-                </span>
-              </p>
-            </div>
-          </Panel>
+          <div className="mx-auto mt-2 w-full max-w-3xl rounded-[14px] border border-border bg-card px-4 py-3">
+            <p className="flex items-start gap-2 text-[12.5px] text-muted-foreground">
+              <KeyRound className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              <span>
+                This needs an OpenAI key. Set{" "}
+                <code className="rounded bg-secondary px-1">OPENAI_API_KEY</code> on the server to
+                turn it on. Nothing is faked in the meantime.
+              </span>
+            </p>
+          </div>
         ) : null}
 
-        <div ref={scrollRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto pb-4">
-          {turns.length === 0 ? (
-            <Panel>
-              <EmptyState
-                icon={Sparkles}
-                title="Ask anything"
-                description="A question about your day, help with homework, a PDF to read, a photo to look at, or a picture to make. It checks your own workspace first and shows what it used."
-              />
-              <div className="border-t border-border p-3">
-                <p className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground">
-                  Try
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {SUGGESTIONS.map((suggestion) => (
-                    <button
-                      key={suggestion}
-                      type="button"
-                      disabled={!configured || busy}
-                      onClick={() => void send(suggestion)}
-                      className="rounded-[9px] border border-border px-2.5 py-1 text-[12px] text-muted-foreground transition-colors duration-150 hover:border-foreground/20 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {suggestion}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </Panel>
-          ) : (
-            turns.map((turn) =>
-              turn.role === "user" ? (
-                <UserTurn key={turn.id} turn={turn} store={fileStore} />
-              ) : (
-                <AssistantTurn
-                  key={turn.id}
-                  turn={turn}
-                  store={fileStore}
-                  onRetry={() => void retry()}
-                />
-              ),
-            )
-          )}
-        </div>
-
-        <form
-          className={cn(
-            "relative rounded-[14px] border bg-card p-2 transition-colors focus-within:border-foreground/20",
-            dragging ? "border-primary bg-primary-soft/30" : "border-border",
-          )}
-          onSubmit={(e) => {
-            e.preventDefault();
-            submit();
-          }}
-        >
-          {dragging ? (
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-[14px] border-2 border-dashed border-primary/60 bg-background/70 text-[13px] font-medium text-primary"
-            >
-              Drop images or PDFs to attach
+        {empty ? (
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center pb-[8vh]">
+            <h1 className="mb-7 text-center text-[26px] font-semibold tracking-tight sm:text-[28px]">
+              What can I help with?
+            </h1>
+            <div className="w-full max-w-3xl">{composer}</div>
+            <div className="mt-4 flex max-w-3xl flex-wrap justify-center gap-2">
+              {SUGGESTIONS.map((suggestion) => (
+                <button
+                  key={suggestion}
+                  type="button"
+                  disabled={!configured || busy}
+                  onClick={() => submit(suggestion)}
+                  className="rounded-full border border-border px-3.5 py-1.5 text-[13px] text-muted-foreground transition-colors duration-150 hover:bg-secondary hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {suggestion}
+                </button>
+              ))}
             </div>
-          ) : null}
-
-          {pending.length > 0 ? (
-            <ul className="flex flex-wrap gap-2 px-2 pb-1.5 pt-1" aria-label="Files to send">
-              {pending.map((file) => (
-                <li key={file.key} className="group relative">
-                  {file.kind === "image" && file.previewUrl ? (
-                    <img
-                      src={file.previewUrl}
-                      alt={file.name}
-                      width={56}
-                      height={56}
-                      className="size-14 rounded-[8px] border border-border object-cover"
+          </div>
+        ) : (
+          <>
+            <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
+              <div className="mx-auto w-full max-w-3xl space-y-8 px-1 pb-8 pt-4">
+                {turns.map((turn) =>
+                  turn.role === "user" ? (
+                    <UserTurn
+                      key={turn.id}
+                      turn={turn}
+                      store={fileStore}
+                      busy={busy}
+                      onEdit={(text) => {
+                        followAgain();
+                        void edit(turn.id, text);
+                      }}
                     />
                   ) : (
-                    <span className="flex h-14 max-w-48 items-center gap-2 rounded-[8px] border border-border bg-secondary/60 px-2.5 text-[12px]">
-                      <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-                      <span className="min-w-0">
-                        <span className="block truncate font-medium">{file.name}</span>
-                        <span className="block text-[11px] text-muted-foreground">
-                          PDF · {formatBytes(file.blob.size)}
-                        </span>
-                      </span>
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    aria-label={`Remove ${file.name}`}
-                    onClick={() => removePending(file.key)}
-                    disabled={busy || uploading}
-                    className="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full border border-border bg-card text-muted-foreground shadow-sm transition-colors hover:text-urgent"
-                  >
-                    <X className="size-3" aria-hidden />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-
-          <div className="flex items-end gap-2">
-            <label htmlFor="ask-input" className="sr-only">
-              Ask a question
-            </label>
-            <Textarea
-              ref={inputRef}
-              id="ask-input"
-              rows={1}
-              value={input}
-              disabled={!configured}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  submit();
-                }
-              }}
-              onPaste={(e) => {
-                const files = [...e.clipboardData.files].filter(
-                  (f) => isImageFile(f) || isPdfFile(f),
-                );
-                if (files.length > 0) {
-                  e.preventDefault();
-                  void addFiles(files);
-                }
-              }}
-              placeholder={
-                configured
-                  ? pending.length > 0
-                    ? "Say what to do with the files, or just send them"
-                    : "Ask anything, or drop in photos and PDFs…"
-                  : "Not configured"
-              }
-              className="max-h-40 min-h-[38px] resize-none border-0 bg-transparent px-2 py-2 text-[13.5px] shadow-none focus-visible:ring-0"
-            />
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*,application/pdf,.pdf,.heic,.heif"
-              multiple
-              hidden
-              onChange={(e) => {
-                if (e.target.files) void addFiles(e.target.files);
-                e.target.value = "";
-              }}
-            />
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              className="size-9 shrink-0 text-muted-foreground"
-              aria-label="Attach images or PDFs"
-              title="Attach images or PDFs — as many as you like. Or drop them anywhere, or paste."
-              disabled={!configured || busy || uploading}
-              onClick={() => fileRef.current?.click()}
-            >
-              <Paperclip className="size-4" aria-hidden />
-            </Button>
-            {busy || uploading ? (
-              <Button
-                type="button"
-                size="icon"
-                variant="outline"
-                className="size-9 shrink-0"
-                aria-label={uploading ? "Uploading files" : "Stop generating"}
-                onClick={stop}
-                disabled={uploading}
-              >
-                {uploading ? (
-                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
-                ) : (
-                  <Square className="size-3.5" />
+                    <AssistantTurn
+                      key={turn.id}
+                      turn={turn}
+                      store={fileStore}
+                      last={turn.id === lastAssistant?.id}
+                      busy={busy}
+                      onRetry={() => {
+                        followAgain();
+                        void retry();
+                      }}
+                    />
+                  ),
                 )}
-              </Button>
-            ) : (
-              <Button
-                type="submit"
-                size="icon"
-                className="size-9 shrink-0"
-                disabled={!canSend}
-                aria-label="Send"
-              >
-                <Send className="size-4" />
-              </Button>
-            )}
-          </div>
-          <p className="mt-1.5 flex items-center gap-1.5 px-1 text-[11px] text-muted-foreground">
-            <ImagePlus className="size-3 shrink-0" aria-hidden />
-            <span className="min-w-0 truncate">
-              {local
-                ? "Files stay on this device, and one message can carry about 4 MB."
-                : "Files go to your own private storage; the model gets a link. Nothing is kept by OpenAI."}
-            </span>
-          </p>
-        </form>
+              </div>
+            </div>
+
+            <div className="relative mx-auto w-full max-w-3xl shrink-0">
+              {!atBottom ? (
+                <button
+                  type="button"
+                  onClick={scrollToBottom}
+                  aria-label="Scroll to the latest message"
+                  className="absolute -top-12 left-1/2 z-10 grid size-9 -translate-x-1/2 place-items-center rounded-full border border-border bg-card text-muted-foreground shadow-md transition-colors hover:text-foreground"
+                >
+                  <ArrowDown className="size-4" aria-hidden />
+                </button>
+              ) : null}
+              {composer}
+              <p className="mt-2 text-center text-[11.5px] text-muted-foreground">
+                Answers can be wrong. Check anything important.
+              </p>
+            </div>
+          </>
+        )}
       </section>
     </div>
   );
 }
 
+// ---- composer --------------------------------------------------------------
+
+function Composer({
+  inputRef,
+  fileRef,
+  input,
+  setInput,
+  pending,
+  removePending,
+  addFiles,
+  onSubmit,
+  onStop,
+  busy,
+  uploading,
+  configured,
+  local,
+}: {
+  inputRef: React.RefObject<HTMLTextAreaElement | null>;
+  fileRef: React.RefObject<HTMLInputElement | null>;
+  input: string;
+  setInput: (value: string) => void;
+  pending: Pending[];
+  removePending: (key: string) => void;
+  addFiles: (files: Iterable<File>) => Promise<void>;
+  onSubmit: () => void;
+  onStop: () => void;
+  busy: boolean;
+  uploading: boolean;
+  configured: boolean;
+  local: boolean;
+}) {
+  const canSend =
+    configured && !busy && !uploading && (input.trim().length > 0 || pending.length > 0);
+
+  // Grows with what is typed, up to a third of the screen, then scrolls.
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+  }, [input, inputRef]);
+
+  return (
+    <form
+      className="rounded-[26px] border border-border bg-card px-2.5 pb-2 pt-2 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_16px_-6px_rgba(0,0,0,0.08)] transition-colors focus-within:border-foreground/20"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit();
+      }}
+    >
+      {pending.length > 0 ? (
+        <ul className="flex flex-wrap gap-2 px-1.5 pb-2 pt-1" aria-label="Files to send">
+          {pending.map((file) => (
+            <li key={file.key} className="group relative">
+              {file.kind === "image" && file.previewUrl ? (
+                <img
+                  src={file.previewUrl}
+                  alt={file.name}
+                  width={56}
+                  height={56}
+                  className="size-14 rounded-[12px] border border-border object-cover"
+                />
+              ) : (
+                <span className="flex h-14 max-w-52 items-center gap-2.5 rounded-[12px] border border-border bg-secondary/60 px-3 text-[12px]">
+                  <span className="grid size-8 shrink-0 place-items-center rounded-[8px] bg-urgent text-white">
+                    <FileText className="size-4" aria-hidden />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{file.name}</span>
+                    <span className="block text-[11px] text-muted-foreground">
+                      PDF · {formatBytes(file.blob.size)}
+                    </span>
+                  </span>
+                </span>
+              )}
+              <button
+                type="button"
+                aria-label={`Remove ${file.name}`}
+                onClick={() => removePending(file.key)}
+                disabled={busy || uploading}
+                className="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full bg-foreground text-background shadow-sm transition-opacity hover:opacity-80"
+              >
+                <X className="size-3" aria-hidden />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      <label htmlFor="ask-input" className="sr-only">
+        Message
+      </label>
+      <textarea
+        ref={inputRef}
+        id="ask-input"
+        rows={1}
+        value={input}
+        disabled={!configured}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+            e.preventDefault();
+            onSubmit();
+          }
+        }}
+        onPaste={(e) => {
+          const files = [...e.clipboardData.files].filter((f) => isImageFile(f) || isPdfFile(f));
+          if (files.length > 0) {
+            e.preventDefault();
+            void addFiles(files);
+          }
+        }}
+        placeholder={configured ? "Ask anything" : "Not configured"}
+        className="block max-h-[220px] min-h-[40px] w-full resize-none bg-transparent px-2.5 py-2 text-[15px] leading-6 outline-none placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+      />
+
+      <div className="flex items-center justify-between gap-2 pt-1">
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*,application/pdf,.pdf,.heic,.heif"
+          multiple
+          hidden
+          onChange={(e) => {
+            if (e.target.files) void addFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
+        <button
+          type="button"
+          className="grid size-9 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-50"
+          aria-label="Add photos and PDFs"
+          title={
+            local
+              ? "Add photos and PDFs. They stay on this device; one message can carry about 4 MB."
+              : "Add photos and PDFs, as many as you like. Or drop or paste them."
+          }
+          disabled={!configured || busy || uploading}
+          onClick={() => fileRef.current?.click()}
+        >
+          <Plus className="size-5" aria-hidden />
+        </button>
+        {busy || uploading ? (
+          <button
+            type="button"
+            className="grid size-9 place-items-center rounded-full bg-foreground text-background transition-opacity hover:opacity-85 disabled:opacity-60"
+            aria-label={uploading ? "Uploading files" : "Stop generating"}
+            onClick={onStop}
+            disabled={uploading}
+          >
+            {uploading ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+            ) : (
+              <Square className="size-3.5 fill-current" aria-hidden />
+            )}
+          </button>
+        ) : (
+          <button
+            type="submit"
+            className="grid size-9 place-items-center rounded-full bg-foreground text-background transition-opacity hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-25"
+            disabled={!canSend}
+            aria-label="Send"
+          >
+            <ArrowUp className="size-[18px]" strokeWidth={2.4} aria-hidden />
+          </button>
+        )}
+      </div>
+    </form>
+  );
+}
+
 // ---- chat list ------------------------------------------------------------
+
+const GROUPS = ["Today", "Yesterday", "Previous 7 days", "Previous 30 days", "Older"] as const;
+
+function groupOf(updatedAt: string, now: Date): (typeof GROUPS)[number] {
+  const days = differenceInCalendarDays(now, new Date(updatedAt));
+  if (days <= 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days < 7) return "Previous 7 days";
+  if (days < 30) return "Previous 30 days";
+  return "Older";
+}
 
 function ChatList({
   chats,
@@ -520,53 +627,65 @@ function ChatList({
   onOpen: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
+  const now = new Date();
+  const groups = GROUPS.map((label) => ({
+    label,
+    chats: chats.filter((c) => groupOf(c.updatedAt, now) === label),
+  })).filter((g) => g.chats.length > 0);
+
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <Button
-        variant="outline"
-        size="sm"
-        className="mb-3 h-8 w-full justify-start gap-2 text-[12.5px]"
+      <button
+        type="button"
         onClick={onNew}
+        className="mb-3 flex h-9 w-full items-center gap-2.5 rounded-[10px] px-2.5 text-[13.5px] font-medium transition-colors hover:bg-secondary"
       >
-        <Plus className="size-3.5" aria-hidden /> New chat
-      </Button>
-      <p className="mb-1.5 px-1 text-[11px] uppercase tracking-wide text-muted-foreground">Chats</p>
-      <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto" aria-label="Chats">
+        <SquarePen className="size-4" aria-hidden /> New chat
+      </button>
+      <nav className="min-h-0 flex-1 overflow-y-auto" aria-label="Chats">
         {!ready ? (
-          <li className="px-2 py-1.5 text-[12px] text-muted-foreground">Loading…</li>
+          <p className="px-2.5 py-1.5 text-[12.5px] text-muted-foreground">Loading…</p>
         ) : chats.length === 0 ? (
-          <li className="px-2 py-1.5 text-[12px] text-muted-foreground">
-            Nothing yet. Every conversation is kept here.
-          </li>
+          <p className="px-2.5 py-1.5 text-[12.5px] text-muted-foreground">
+            No chats yet. Every conversation is kept here.
+          </p>
         ) : (
-          chats.map((c) => (
-            <li key={c.id} className="group relative">
-              <button
-                type="button"
-                onClick={() => onOpen(c.id)}
-                aria-current={c.id === activeId ? "true" : undefined}
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-[8px] px-2 py-1.5 pr-8 text-left text-[12.5px] transition-colors",
-                  c.id === activeId
-                    ? "bg-secondary text-foreground"
-                    : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
-                )}
-              >
-                <MessageSquare className="size-3.5 shrink-0 opacity-70" aria-hidden />
-                <span className="truncate">{c.title}</span>
-              </button>
-              <button
-                type="button"
-                aria-label={`Delete chat "${c.title}"`}
-                onClick={() => onDelete(c.id)}
-                className="absolute right-1.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-[6px] text-muted-foreground opacity-0 transition-opacity hover:text-urgent focus-visible:opacity-100 group-hover:opacity-100"
-              >
-                <Trash2 className="size-3.5" aria-hidden />
-              </button>
-            </li>
+          groups.map((group) => (
+            <div key={group.label} className="mb-4">
+              <p className="px-2.5 pb-1 text-[11.5px] font-medium text-muted-foreground">
+                {group.label}
+              </p>
+              <ul className="space-y-px">
+                {group.chats.map((c) => (
+                  <li key={c.id} className="group relative">
+                    <button
+                      type="button"
+                      onClick={() => onOpen(c.id)}
+                      aria-current={c.id === activeId ? "true" : undefined}
+                      className={cn(
+                        "flex h-9 w-full items-center rounded-[10px] px-2.5 pr-9 text-left text-[13.5px] transition-colors",
+                        c.id === activeId
+                          ? "bg-secondary text-foreground"
+                          : "text-foreground/85 hover:bg-secondary/70",
+                      )}
+                    >
+                      <span className="truncate">{c.title}</span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Delete chat "${c.title}"`}
+                      onClick={() => onDelete(c.id)}
+                      className="absolute right-1.5 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-[8px] text-muted-foreground opacity-0 transition-opacity hover:text-urgent focus-visible:opacity-100 group-hover:opacity-100"
+                    >
+                      <Trash2 className="size-3.5" aria-hidden />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))
         )}
-      </ul>
+      </nav>
     </div>
   );
 }
@@ -595,7 +714,7 @@ function UserFile({ store, file }: { store: FileStore; file: ChatFile }) {
     <ImageWithLightbox
       src={src}
       name={file.name}
-      className="size-20 rounded-[8px] border border-border object-cover"
+      className="size-24 rounded-[14px] border border-border object-cover"
     />
   );
 }
@@ -609,9 +728,11 @@ function PdfChip({ store, file }: { store: FileStore; file: ChatFile }) {
           .then((url) => window.open(url, "_blank", "noopener"))
           .catch(() => toast.error("That PDF is no longer available"));
       }}
-      className="flex h-12 max-w-56 items-center gap-2 rounded-[8px] border border-border bg-card px-2.5 text-left text-[12px] transition-colors hover:border-foreground/20"
+      className="flex h-14 max-w-60 items-center gap-2.5 rounded-[14px] border border-border bg-card px-3 text-left text-[12.5px] transition-colors hover:border-foreground/20"
     >
-      <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+      <span className="grid size-8 shrink-0 place-items-center rounded-[8px] bg-urgent text-white">
+        <FileText className="size-4" aria-hidden />
+      </span>
       <span className="min-w-0">
         <span className="block truncate font-medium">{file.name}</span>
         <span className="block text-[11px] text-muted-foreground">
@@ -622,11 +743,32 @@ function PdfChip({ store, file }: { store: FileStore; file: ChatFile }) {
   );
 }
 
-function UserTurn({ turn, store }: { turn: Turn; store: FileStore }) {
+function UserTurn({
+  turn,
+  store,
+  busy,
+  onEdit,
+}: {
+  turn: Turn;
+  store: FileStore;
+  busy: boolean;
+  onEdit: (text: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(turn.text);
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
+  }, [draft, editing]);
+
   return (
-    <div className="flex flex-col items-end gap-1.5">
+    <div className="group flex flex-col items-end gap-1.5">
       {turn.files.length > 0 ? (
-        <ul className="flex max-w-[85%] flex-wrap justify-end gap-1.5" aria-label="Attached files">
+        <ul className="flex max-w-[85%] flex-wrap justify-end gap-2" aria-label="Attached files">
           {turn.files.map((file) => (
             <li key={file.id}>
               <UserFile store={store} file={file} />
@@ -634,10 +776,79 @@ function UserTurn({ turn, store }: { turn: Turn; store: FileStore }) {
           ))}
         </ul>
       ) : null}
-      {turn.text ? (
-        <p className="max-w-[85%] whitespace-pre-wrap rounded-[12px] bg-secondary px-3 py-2 text-[13px]">
-          {turn.text}
-        </p>
+      {editing ? (
+        <form
+          className="w-full rounded-[22px] bg-secondary p-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setEditing(false);
+            if (draft.trim() !== turn.text.trim()) onEdit(draft);
+          }}
+        >
+          <label htmlFor={`edit-${turn.id}`} className="sr-only">
+            Edit message
+          </label>
+          <textarea
+            id={`edit-${turn.id}`}
+            ref={ref}
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setEditing(false);
+            }}
+            className="block w-full resize-none bg-transparent px-1 text-[15px] leading-7 outline-none"
+          />
+          <div className="mt-2 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 rounded-full px-3.5 text-[13px]"
+              onClick={() => {
+                setDraft(turn.text);
+                setEditing(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              className="h-8 rounded-full bg-foreground px-3.5 text-[13px] text-background hover:bg-foreground/85"
+              disabled={busy || (!draft.trim() && turn.files.length === 0)}
+            >
+              Send
+            </Button>
+          </div>
+        </form>
+      ) : turn.text ? (
+        <>
+          <p className="max-w-[80%] whitespace-pre-wrap break-words rounded-[22px] bg-secondary px-4 py-2.5 text-[15px] leading-7">
+            {turn.text}
+          </p>
+          <div className="flex items-center gap-0.5 opacity-100 transition-opacity focus-within:opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+            <CopyButton
+              text={turn.text}
+              label="Copy message"
+              showLabel={false}
+              className="grid size-8 place-items-center hover:bg-secondary"
+            />
+            <button
+              type="button"
+              aria-label="Edit message"
+              title="Edit message"
+              disabled={busy}
+              onClick={() => {
+                setDraft(turn.text);
+                setEditing(true);
+              }}
+              className="grid size-8 place-items-center rounded-[7px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-40"
+            >
+              <Pencil className="size-3.5" aria-hidden />
+            </button>
+          </div>
+        </>
       ) : null}
     </div>
   );
@@ -653,7 +864,7 @@ function AssistantImage({ store, image }: { store: FileStore; image: TurnImage }
         src={src}
         name={name}
         className={cn(
-          "max-h-[420px] w-auto max-w-full rounded-[12px] border border-border object-contain transition-[filter] duration-300",
+          "max-h-[460px] w-auto max-w-full rounded-[16px] border border-border object-contain transition-[filter] duration-300",
           image.partial && "blur-[2px]",
         )}
       />
@@ -665,7 +876,7 @@ function AssistantImage({ store, image }: { store: FileStore; image: TurnImage }
         <a
           href={src}
           download={name}
-          className="absolute right-2 top-2 inline-flex size-7 items-center justify-center rounded-full bg-background/85 text-muted-foreground backdrop-blur transition-colors hover:text-foreground"
+          className="absolute right-2 top-2 inline-flex size-8 items-center justify-center rounded-full bg-background/85 text-muted-foreground backdrop-blur transition-colors hover:text-foreground"
           aria-label="Download picture"
           title="Download"
         >
@@ -676,79 +887,49 @@ function AssistantImage({ store, image }: { store: FileStore; image: TurnImage }
   );
 }
 
-function ImageWithLightbox({
-  src,
-  name,
-  className,
-}: {
-  src: string | null;
-  name: string;
-  className?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  if (!src) {
-    return (
-      <div className={cn("grid place-items-center bg-secondary", className)}>
-        <Loader2 className="size-4 animate-spin text-muted-foreground" aria-hidden />
-      </div>
-    );
-  }
-  return (
-    <>
-      <button type="button" onClick={() => setOpen(true)} aria-label={`Open ${name}`}>
-        <img src={src} alt={name} className={className} loading="lazy" />
-      </button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-4xl p-3 sm:p-4">
-          <DialogTitle className="pr-8 text-[13px] font-medium">{name}</DialogTitle>
-          <div className="grid place-items-center">
-            <img
-              src={src}
-              alt={name}
-              className="max-h-[80dvh] w-auto max-w-full rounded-[10px] object-contain"
-            />
-          </div>
-          <div className="flex justify-end">
-            <a
-              href={src}
-              download={name}
-              className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground underline-offset-2 hover:underline"
-            >
-              <Download className="size-3.5" aria-hidden /> Download
-            </a>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
-}
-
 function AssistantTurn({
   turn,
   store,
+  last,
+  busy,
   onRetry,
 }: {
   turn: Turn;
   store: FileStore;
+  last: boolean;
+  busy: boolean;
   onRetry: () => void;
 }) {
+  const waiting =
+    turn.streaming && !turn.text && turn.images.length === 0 && !turn.tools.some((t) => !t.done);
+
   return (
-    <article className="space-y-2.5">
+    <article className="space-y-3" aria-busy={turn.streaming || undefined}>
       {turn.tools.length > 0 ? (
         <ul className="flex flex-wrap gap-1.5">
           {turn.tools.map((tool, i) => (
-            <li key={`${tool.name}-${i}`}>
-              <Pill tone={tool.done ? "neutral" : "primary"}>
-                {tool.done ? null : <Loader2 className="size-3 animate-spin" aria-hidden />}
-                {TOOL_LABEL[tool.name] ?? tool.name}
-              </Pill>
+            <li
+              key={`${tool.name}-${i}`}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[12px]",
+                tool.done ? "text-muted-foreground" : "text-foreground",
+              )}
+            >
+              {tool.done ? (
+                <Check className="size-3" aria-hidden />
+              ) : (
+                <Loader2 className="size-3 animate-spin" aria-hidden />
+              )}
+              {(tool.done ? TOOL_DONE_LABEL[tool.name] : undefined) ??
+                TOOL_LABEL[tool.name] ??
+                tool.name}
             </li>
           ))}
         </ul>
       ) : null}
 
       {turn.tools
-        .filter((tool) => tool.done && tool.data && tool.name !== "generate_image")
+        .filter((tool) => tool.done && tool.data && !NO_BLOCK.has(tool.name))
         .map((tool, i) => (
           <ToolResultBlock key={`${tool.name}-block-${i}`} name={tool.name} data={tool.data} />
         ))}
@@ -761,12 +942,12 @@ function AssistantTurn({
         </div>
       ) : null}
 
-      {turn.text ? (
-        <CompassAnswer text={turn.text} className="text-[13px]" />
-      ) : turn.streaming && turn.tools.length === 0 && turn.images.length === 0 ? (
-        <p className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
-          <Loader2 className="size-3.5 animate-spin" aria-hidden /> Thinking…
-        </p>
+      {turn.text ? <Markdown text={turn.text} /> : null}
+
+      {waiting ? (
+        <span className="flex h-7 items-center" role="status" aria-label="Thinking">
+          <span className="think-dot inline-block size-3.5 rounded-full bg-foreground" />
+        </span>
       ) : null}
 
       {turn.proposals.map((proposal, i) => (
@@ -776,7 +957,7 @@ function AssistantTurn({
       {turn.error ? (
         <div
           role="alert"
-          className="flex items-start gap-2 rounded-[12px] border border-urgent/30 bg-urgent-soft px-3 py-2.5 text-[12.5px] text-urgent"
+          className="flex items-start gap-2 rounded-[14px] border border-urgent/30 bg-urgent-soft px-3.5 py-2.5 text-[13px] text-urgent"
         >
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           <span className="min-w-0">
@@ -790,9 +971,36 @@ function AssistantTurn({
         </div>
       ) : null}
 
-      {!turn.streaming && turn.model && !turn.error ? (
-        <p className="text-[11px] text-muted-foreground/80">{turn.model}</p>
+      {!turn.streaming && (turn.text || turn.error) ? (
+        <div className="-ml-1.5 flex items-center gap-0.5">
+          {turn.text ? (
+            <CopyButton
+              text={turn.text}
+              label="Copy answer"
+              showLabel={false}
+              className="grid size-8 place-items-center hover:bg-secondary"
+            />
+          ) : null}
+          {last ? (
+            <button
+              type="button"
+              aria-label="Regenerate answer"
+              title="Regenerate"
+              disabled={busy}
+              onClick={onRetry}
+              className="grid size-8 place-items-center rounded-[7px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-40"
+            >
+              <RotateCcw className="size-3.5" aria-hidden />
+            </button>
+          ) : null}
+          {turn.model && !turn.error ? (
+            <span className="ml-1.5 text-[11.5px] text-muted-foreground/80">{turn.model}</span>
+          ) : null}
+        </div>
       ) : null}
     </article>
   );
 }
+
+/** Steps whose result is already in the answer itself. */
+const NO_BLOCK = new Set(["generate_image", "web_search", "find_images"]);

@@ -61,7 +61,7 @@ function profileFromSupabase(user: SupabaseUserLike): Profile {
   return {
     id: user.id,
     email: user.email ?? "",
-    name: meta.full_name ?? meta.name ?? user.email?.split("@")[0] ?? "Aadit Mehta",
+    name: meta.full_name ?? meta.name ?? user.email?.split("@")[0] ?? "",
     avatarUrl: meta.avatar_url,
     school: "Wilcox High School",
     grade: "Grade 9",

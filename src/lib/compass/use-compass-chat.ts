@@ -59,7 +59,19 @@ export const TOOL_LABEL: Record<CompassToolName, string> = {
   propose_task: "Drafting a task",
   update_task: "Drafting a change",
   generate_image: "Drawing",
+  web_search: "Searching the web",
+  find_images: "Finding pictures",
 };
+
+/** The same steps once they are finished. */
+export const TOOL_DONE_LABEL: Partial<Record<CompassToolName, string>> = {
+  web_search: "Searched the web",
+  find_images: "Found pictures",
+  generate_image: "Drew a picture",
+};
+
+/** Steps shown once however many times they run in one answer. */
+const ONE_STEP = new Set<CompassToolName>(["generate_image", "web_search", "find_images"]);
 
 /** A picture in an assistant turn: fresh from the model, or kept from before. */
 export interface TurnImage {
@@ -102,6 +114,8 @@ export interface CompassChat {
   stop: () => void;
   /** Sends the last user message again, replacing the failed answer. */
   retry: () => Promise<void>;
+  /** Replaces a message the user sent with new text and answers again from there. */
+  edit: (turnId: string, text: string) => Promise<void>;
   chats: ChatSummary[];
   activeId: string | null;
   chatsReady: boolean;
@@ -355,12 +369,16 @@ export function useCompassChat(): CompassChat {
               patch((t) => ({ ...t, text: t.text + event.delta }));
               break;
             case "tool":
-              // The painter is retried server-side on another image model;
-              // one "Drawing" is enough for all of its tries.
+              // The painter is retried server-side on another image model, and
+              // one answer can search several times: one step each is enough.
               patch((t) =>
-                event.name === "generate_image" &&
-                t.tools.some((tool) => tool.name === "generate_image" && !tool.done)
-                  ? t
+                ONE_STEP.has(event.name) && t.tools.some((tool) => tool.name === event.name)
+                  ? {
+                      ...t,
+                      tools: t.tools.map((tool) =>
+                        tool.name === event.name ? { ...tool, done: false } : tool,
+                      ),
+                    }
                   : { ...t, tools: [...t.tools, { name: event.name, done: false }] },
               );
               break;
@@ -498,6 +516,18 @@ export function useCompassChat(): CompassChat {
     await run(lastUser.text, lastUser.files, current.slice(0, at));
   }, [busy, run]);
 
+  const edit = useCallback(
+    async (turnId: string, text: string) => {
+      if (busy) return;
+      const current = turnsRef.current;
+      const at = current.findIndex((t) => t.id === turnId && t.role === "user");
+      const turn = current[at];
+      if (!turn || (!text.trim() && turn.files.length === 0)) return;
+      await run(text.trim(), turn.files, current.slice(0, at));
+    },
+    [busy, run],
+  );
+
   return {
     turns,
     busy,
@@ -505,6 +535,7 @@ export function useCompassChat(): CompassChat {
     send,
     stop,
     retry,
+    edit,
     chats,
     activeId,
     chatsReady,

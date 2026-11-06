@@ -34,7 +34,7 @@ import { serverEnv } from "./env";
  * renders it only when there is more than one.
  */
 export const PASSCODE_ACCOUNTS = [
-  { id: "main", email: "aaditmehtacoder@gmail.com", label: "aaditmehtacoder" },
+  { id: "main", email: "aaditmehtacoder@gmail.com", label: "Main" },
 ] as const;
 
 export type PasscodeAccountId = (typeof PASSCODE_ACCOUNTS)[number]["id"];

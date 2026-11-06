@@ -13,6 +13,7 @@
 
 import { getSupabase } from "@/lib/auth/client";
 import { nowISO } from "@/lib/core/time";
+import { storageKey } from "@/lib/storage-keys";
 
 import type { Chat, ChatSummary } from "./types";
 
@@ -26,7 +27,7 @@ export interface ChatStore {
 const MAX_LOCAL_CHATS = 200;
 
 export function localKey(userId: string): string {
-  return `aaditos:chats:${userId}`;
+  return storageKey(`chats:${userId}`);
 }
 
 export class LocalChatStore implements ChatStore {

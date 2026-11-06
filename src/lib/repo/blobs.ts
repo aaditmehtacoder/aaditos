@@ -12,7 +12,7 @@
  * perfectly legible as a photo of an assignment sheet.
  */
 
-const DB_NAME = "aaditos-blobs";
+const DB_NAME = "planner-blobs";
 const STORE = "blobs";
 
 function openDb(): Promise<IDBDatabase> {

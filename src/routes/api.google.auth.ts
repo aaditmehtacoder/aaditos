@@ -47,7 +47,7 @@ export const Route = createFileRoute("/api/google/auth")({
         }
         if (!encryptionReady()) {
           return problem(
-            "TOKEN_ENCRYPTION_KEY must be set (32+ characters) before AaditOS will store a Google refresh token.",
+            "TOKEN_ENCRYPTION_KEY must be set (32+ characters) before the app will store a Google refresh token.",
           );
         }
 

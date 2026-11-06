@@ -63,7 +63,7 @@ for (const viewport of VIEWPORTS) {
     await page.goto(`${BASE}/signin`, { waitUntil: "networkidle" });
     await page.getByRole("button", { name: /Explore demo mode/i }).click();
     await page.waitForURL((url) => !url.pathname.startsWith("/signin"), { timeout: 15_000 });
-    await page.evaluate((t) => localStorage.setItem("aaditos:theme", t), theme);
+    await page.evaluate((t) => localStorage.setItem("planner:theme", t), theme);
 
     for (const [name, path] of PAGES) {
       await page.goto(`${BASE}${path}`, { waitUntil: "networkidle" });

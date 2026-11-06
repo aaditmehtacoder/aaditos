@@ -62,7 +62,7 @@ async function search(query: string, token: string, fetchImpl: typeof fetch): Pr
         authorization: `Bearer ${token}`,
         accept: "application/vnd.github+json",
         "x-github-api-version": "2022-11-28",
-        "user-agent": "AaditOS/1.0",
+        "user-agent": "planner/1.0",
       },
       signal: AbortSignal.timeout(12_000),
     },

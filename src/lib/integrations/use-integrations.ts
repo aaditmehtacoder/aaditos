@@ -17,6 +17,7 @@ import { mergeBySourceRef, normalizeEvent } from "@/lib/core/normalize";
 import type { CalendarEvent, IntegrationRecord, SyncRun } from "@/lib/core/types";
 import { PROVIDER_INTEGRATION_IDS } from "@/lib/integrations/contracts";
 import { authHeaders } from "@/lib/compass/client";
+import { storageKey } from "@/lib/storage-keys";
 import { useOS } from "@/lib/store";
 import type {
   InboxItem,
@@ -131,7 +132,7 @@ export function useInbox(): { items: InboxItem[]; dismiss: (id: string) => void 
   return { items: (data ?? []).filter((i) => !dismissed.has(i.id)), dismiss };
 }
 
-const DISMISSED_KEY = "aaditos:inbox-dismissed";
+const DISMISSED_KEY = storageKey("inbox-dismissed");
 
 function readDismissed(): Set<string> {
   try {

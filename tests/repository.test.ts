@@ -158,7 +158,7 @@ describe("LocalRepository", () => {
   });
 
   it("recovers from a corrupted storage payload instead of crashing", async () => {
-    window.localStorage.setItem(`aaditos:v1:workspace:${USER}`, "{not json");
+    window.localStorage.setItem(`planner:v1:workspace:${USER}`, "{not json");
     const workspace = await repo().loadWorkspace(USER);
     expect(workspace.tasks).toEqual([]);
     expect(workspace.profile.id).toBe(USER);

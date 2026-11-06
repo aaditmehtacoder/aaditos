@@ -5,10 +5,11 @@ import { withBase } from "@/lib/base-path";
 import { newId } from "@/lib/core/ids";
 import { TaskDraftSchema, type TaskDraft } from "@/lib/core/nl-task";
 import { APP_TZ } from "@/lib/core/time";
+import { storageKey } from "@/lib/storage-keys";
 
 import type { CompassEvent, CompassMessage, CompassSnapshot } from "./types";
 
-const CLIENT_ID_KEY = "aaditos:client-id";
+const CLIENT_ID_KEY = storageKey("client-id");
 
 /** Random per-browser id. Used only for rate limiting and the hashed safety identifier. */
 export function clientId(): string {
