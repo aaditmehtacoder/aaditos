@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { withBase } from "@/lib/base-path";
 import { newId } from "@/lib/core/ids";
-import { GMAIL_SCOPE } from "@/server/providers/gmail";
+import { GMAIL_SCOPE, GMAIL_SEND_SCOPE } from "@/server/providers/gmail";
 import { MAIL_ONLY_SCOPES, buildConsentUrl, googleConfigured } from "@/server/providers/google";
 import { serverEnv } from "@/server/env";
 import { encryptionReady, writeOauthState } from "@/server/google-session";
@@ -44,7 +44,11 @@ export const Route = createFileRoute("/api/google/auth")({
       GET: async ({ request }) => {
         const params = new URL(request.url).searchParams;
         const addMail = params.get("add") === "mail";
-        const extra = addMail || params.get("scope") === "gmail" ? [GMAIL_SCOPE] : [];
+        // Reading and replying: gmail.send can only send, nothing else.
+        const extra =
+          addMail || params.get("scope") === "gmail" ? [GMAIL_SCOPE, GMAIL_SEND_SCOPE] : [];
+        // Reconnecting one known account preselects it in Google's picker.
+        const hint = params.get("hint") ?? undefined;
         if (!googleConfigured()) {
           return problem(
             "Google is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on the server.",
@@ -67,6 +71,7 @@ export const Route = createFileRoute("/api/google/auth")({
               state,
               extraScopes: extra,
               baseScopes: addMail ? MAIL_ONLY_SCOPES : undefined,
+              loginHint: hint && /^[^\s@]+@[^\s@]+$/.test(hint) ? hint : undefined,
             }),
             "cache-control": "no-store",
           },

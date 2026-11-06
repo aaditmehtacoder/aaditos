@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { GMAIL_SCOPE } from "@/server/providers/gmail";
+import { GMAIL_SCOPE, GMAIL_SEND_SCOPE } from "@/server/providers/gmail";
 import { GOOGLE_SCOPES, googleConfigured } from "@/server/providers/google";
 import {
   MAX_GOOGLE_ACCOUNTS,
@@ -55,6 +55,7 @@ async function status(accounts: GoogleAccount[]) {
       connectedAt: a.connectedAt ?? null,
       main: a === main,
       gmail: a.scope.split(" ").includes(GMAIL_SCOPE),
+      canReply: a.scope.split(" ").includes(GMAIL_SEND_SCOPE),
       calendar: /calendar/.test(a.scope),
     })),
   };

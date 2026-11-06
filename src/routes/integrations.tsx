@@ -199,9 +199,19 @@ function MailAccounts({
               <Mail className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
               <span className="min-w-0 flex-1 truncate">{account.email}</span>
               {account.main ? (
-                <span className="shrink-0 text-[11px] text-muted-foreground">
+                <span className="hidden shrink-0 text-[11px] text-muted-foreground sm:inline">
                   Calendar & Classroom too
                 </span>
+              ) : null}
+              {!account.canReply ? (
+                <a
+                  href={withBase(
+                    `api/google/auth?add=mail&hint=${encodeURIComponent(account.email ?? "")}`,
+                  )}
+                  className="shrink-0 text-[11.5px] text-primary underline-offset-2 hover:underline"
+                >
+                  Allow replies
+                </a>
               ) : null}
               <button
                 type="button"
@@ -322,7 +332,7 @@ function buildCards(opts: {
       id: "gmail",
       mark: "gmail",
       name: "Gmail",
-      what: "Every inbox you connect, side by side on the Email page. Read-only: nothing here can send or delete mail.",
+      what: "Every inbox you connect, side by side on the Email page. Read and reply: nothing is sent until you press Send, and nothing is ever deleted.",
       provider: "gmail",
       state: !google.configured
         ? "setup"
@@ -484,8 +494,8 @@ function IntegrationsPage() {
         <div className="min-w-0">
           <h1 className="text-[22px] font-semibold tracking-tight">Integrations</h1>
           <p className="mt-1 text-[13px] text-muted-foreground">
-            {on} of {cards.length} on. Everything here is read-only; the app never writes to another
-            service.
+            {on} of {cards.length} on. Everything here only reads, except replies you send from the
+            Email page.
           </p>
         </div>
         <Button

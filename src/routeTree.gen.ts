@@ -25,6 +25,9 @@ import { Route as ClassesIndexRouteImport } from './routes/classes.index'
 import { Route as ClassesCourseIdRouteImport } from './routes/classes.$courseId'
 import { Route as ApiAuthPasscodeRouteImport } from './routes/api.auth.passcode'
 import { Route as ApiCronSyncRouteImport } from './routes/api.cron.sync'
+import { Route as ApiGmailDraftRouteImport } from './routes/api.gmail.draft'
+import { Route as ApiGmailMessageRouteImport } from './routes/api.gmail.message'
+import { Route as ApiGmailReplyRouteImport } from './routes/api.gmail.reply'
 import { Route as ApiGoogleAuthRouteImport } from './routes/api.google.auth'
 import { Route as ApiGoogleCallbackRouteImport } from './routes/api.google.callback'
 import { Route as ApiGoogleStatusRouteImport } from './routes/api.google.status'
@@ -109,6 +112,21 @@ const ApiCronSyncRoute = ApiCronSyncRouteImport.update({
   path: '/api/cron/sync',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiGmailDraftRoute = ApiGmailDraftRouteImport.update({
+  id: '/api/gmail/draft',
+  path: '/api/gmail/draft',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGmailMessageRoute = ApiGmailMessageRouteImport.update({
+  id: '/api/gmail/message',
+  path: '/api/gmail/message',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGmailReplyRoute = ApiGmailReplyRouteImport.update({
+  id: '/api/gmail/reply',
+  path: '/api/gmail/reply',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiGoogleAuthRoute = ApiGoogleAuthRouteImport.update({
   id: '/api/google/auth',
   path: '/api/google/auth',
@@ -142,6 +160,9 @@ export interface FileRoutesByFullPath {
   '/classes/': typeof ClassesIndexRoute
   '/api/auth/passcode': typeof ApiAuthPasscodeRoute
   '/api/cron/sync': typeof ApiCronSyncRoute
+  '/api/gmail/draft': typeof ApiGmailDraftRoute
+  '/api/gmail/message': typeof ApiGmailMessageRoute
+  '/api/gmail/reply': typeof ApiGmailReplyRoute
   '/api/google/auth': typeof ApiGoogleAuthRoute
   '/api/google/callback': typeof ApiGoogleCallbackRoute
   '/api/google/status': typeof ApiGoogleStatusRoute
@@ -163,6 +184,9 @@ export interface FileRoutesByTo {
   '/classes': typeof ClassesIndexRoute
   '/api/auth/passcode': typeof ApiAuthPasscodeRoute
   '/api/cron/sync': typeof ApiCronSyncRoute
+  '/api/gmail/draft': typeof ApiGmailDraftRoute
+  '/api/gmail/message': typeof ApiGmailMessageRoute
+  '/api/gmail/reply': typeof ApiGmailReplyRoute
   '/api/google/auth': typeof ApiGoogleAuthRoute
   '/api/google/callback': typeof ApiGoogleCallbackRoute
   '/api/google/status': typeof ApiGoogleStatusRoute
@@ -185,6 +209,9 @@ export interface FileRoutesById {
   '/classes/': typeof ClassesIndexRoute
   '/api/auth/passcode': typeof ApiAuthPasscodeRoute
   '/api/cron/sync': typeof ApiCronSyncRoute
+  '/api/gmail/draft': typeof ApiGmailDraftRoute
+  '/api/gmail/message': typeof ApiGmailMessageRoute
+  '/api/gmail/reply': typeof ApiGmailReplyRoute
   '/api/google/auth': typeof ApiGoogleAuthRoute
   '/api/google/callback': typeof ApiGoogleCallbackRoute
   '/api/google/status': typeof ApiGoogleStatusRoute
@@ -208,6 +235,9 @@ export interface FileRouteTypes {
     | '/classes/'
     | '/api/auth/passcode'
     | '/api/cron/sync'
+    | '/api/gmail/draft'
+    | '/api/gmail/message'
+    | '/api/gmail/reply'
     | '/api/google/auth'
     | '/api/google/callback'
     | '/api/google/status'
@@ -229,6 +259,9 @@ export interface FileRouteTypes {
     | '/classes'
     | '/api/auth/passcode'
     | '/api/cron/sync'
+    | '/api/gmail/draft'
+    | '/api/gmail/message'
+    | '/api/gmail/reply'
     | '/api/google/auth'
     | '/api/google/callback'
     | '/api/google/status'
@@ -250,6 +283,9 @@ export interface FileRouteTypes {
     | '/classes/'
     | '/api/auth/passcode'
     | '/api/cron/sync'
+    | '/api/gmail/draft'
+    | '/api/gmail/message'
+    | '/api/gmail/reply'
     | '/api/google/auth'
     | '/api/google/callback'
     | '/api/google/status'
@@ -272,6 +308,9 @@ export interface RootRouteChildren {
   ClassesIndexRoute: typeof ClassesIndexRoute
   ApiAuthPasscodeRoute: typeof ApiAuthPasscodeRoute
   ApiCronSyncRoute: typeof ApiCronSyncRoute
+  ApiGmailDraftRoute: typeof ApiGmailDraftRoute
+  ApiGmailMessageRoute: typeof ApiGmailMessageRoute
+  ApiGmailReplyRoute: typeof ApiGmailReplyRoute
   ApiGoogleAuthRoute: typeof ApiGoogleAuthRoute
   ApiGoogleCallbackRoute: typeof ApiGoogleCallbackRoute
   ApiGoogleStatusRoute: typeof ApiGoogleStatusRoute
@@ -391,6 +430,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCronSyncRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/gmail/draft': {
+      id: '/api/gmail/draft'
+      path: '/api/gmail/draft'
+      fullPath: '/api/gmail/draft'
+      preLoaderRoute: typeof ApiGmailDraftRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/gmail/message': {
+      id: '/api/gmail/message'
+      path: '/api/gmail/message'
+      fullPath: '/api/gmail/message'
+      preLoaderRoute: typeof ApiGmailMessageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/gmail/reply': {
+      id: '/api/gmail/reply'
+      path: '/api/gmail/reply'
+      fullPath: '/api/gmail/reply'
+      preLoaderRoute: typeof ApiGmailReplyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/google/auth': {
       id: '/api/google/auth'
       path: '/api/google/auth'
@@ -432,6 +492,9 @@ const rootRouteChildren: RootRouteChildren = {
   ClassesIndexRoute: ClassesIndexRoute,
   ApiAuthPasscodeRoute: ApiAuthPasscodeRoute,
   ApiCronSyncRoute: ApiCronSyncRoute,
+  ApiGmailDraftRoute: ApiGmailDraftRoute,
+  ApiGmailMessageRoute: ApiGmailMessageRoute,
+  ApiGmailReplyRoute: ApiGmailReplyRoute,
   ApiGoogleAuthRoute: ApiGoogleAuthRoute,
   ApiGoogleCallbackRoute: ApiGoogleCallbackRoute,
   ApiGoogleStatusRoute: ApiGoogleStatusRoute,

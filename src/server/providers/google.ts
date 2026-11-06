@@ -63,6 +63,8 @@ export function buildConsentUrl(opts: {
   extraScopes?: string[] | undefined;
   /** Replaces the base set: an extra email account needs only its mail. */
   baseScopes?: readonly string[] | undefined;
+  /** Preselects an account in Google's picker, for reconnecting that one. */
+  loginHint?: string | undefined;
 }): string {
   const url = new URL(AUTH_ENDPOINT);
   url.searchParams.set("client_id", serverEnv.googleClientId ?? "");
@@ -80,6 +82,7 @@ export function buildConsentUrl(opts: {
   url.searchParams.set("prompt", "consent select_account");
   url.searchParams.set("include_granted_scopes", "true");
   url.searchParams.set("state", opts.state);
+  if (opts.loginHint) url.searchParams.set("login_hint", opts.loginHint);
   return url.toString();
 }
 

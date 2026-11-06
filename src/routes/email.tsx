@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { EmailReader } from "@/components/os/email-reader";
 import { EmptyState, Panel } from "@/components/os/primitives";
 import { Button } from "@/components/ui/button";
 import { withBase } from "@/lib/base-path";
@@ -48,6 +49,7 @@ function EmailPage() {
   const [account, setAccount] = useState<string>("all");
   const [query, setQuery] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(false);
+  const [reading, setReading] = useState<InboxItem | null>(null);
 
   const mailAccounts = (google.data?.accounts ?? []).filter((a) => a.gmail && a.email);
   const emails = useMemo(() => items.filter((i) => i.source === "gmail"), [items]);
@@ -235,6 +237,7 @@ function EmailPage() {
                     item={item}
                     showAccount={mailAccounts.length > 1 && account === "all"}
                     onFiled={() => dismiss(item.id)}
+                    onOpen={() => setReading(item)}
                   />
                 ))}
               </ul>
@@ -242,6 +245,15 @@ function EmailPage() {
           </Panel>
         </>
       )}
+
+      <EmailReader
+        item={reading}
+        canReply={
+          mailAccounts.find((a) => a.email?.toLowerCase() === reading?.account?.toLowerCase())
+            ?.canReply ?? false
+        }
+        onClose={() => setReading(null)}
+      />
     </div>
   );
 }
@@ -285,10 +297,12 @@ function EmailRow({
   item,
   showAccount,
   onFiled,
+  onOpen,
 }: {
   item: InboxItem;
   showAccount: boolean;
   onFiled: () => void;
+  onOpen: () => void;
 }) {
   const capture = useCapture();
   const [busy, setBusy] = useState(false);
@@ -311,7 +325,7 @@ function EmailRow({
   }
 
   return (
-    <li className="group flex items-start gap-3 px-4 py-3">
+    <li className="group flex items-start gap-3 px-4 py-3 transition-colors hover:bg-secondary/40">
       <span
         aria-label={item.unread ? "Unread" : undefined}
         className={cn(
@@ -319,7 +333,12 @@ function EmailRow({
           item.unread ? "bg-primary" : "bg-transparent",
         )}
       />
-      <div className="min-w-0 flex-1">
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={`Open "${item.title}" from ${item.from ?? "unknown sender"}`}
+        className="min-w-0 flex-1 text-left"
+      >
         <div className="flex items-baseline justify-between gap-3">
           <p
             className={cn(
@@ -340,7 +359,7 @@ function EmailRow({
         {showAccount && item.account ? (
           <p className="mt-1 text-[11px] text-muted-foreground/80">{item.account}</p>
         ) : null}
-      </div>
+      </button>
       <div className="flex shrink-0 items-center gap-1 pt-0.5">
         <Button
           size="sm"

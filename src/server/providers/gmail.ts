@@ -214,3 +214,231 @@ export async function fetchGmail(
       : {}),
   };
 }
+
+// ---- reading one message, and replying to it ------------------------------
+
+/** Sending only: it cannot read, delete or change anything on its own. */
+export const GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send";
+
+interface GmailPart {
+  mimeType?: string;
+  filename?: string;
+  headers?: GmailHeader[];
+  body?: { data?: string; size?: number };
+  parts?: GmailPart[];
+}
+
+interface FullMessage extends GmailMessage {
+  payload?: GmailPart & { headers?: GmailHeader[] };
+}
+
+export interface GmailMessageView {
+  id: string;
+  threadId: string;
+  account: string;
+  subject: string;
+  from: string;
+  /** Just the address, for replying. Reply-To wins when the sender set one. */
+  replyTo: string;
+  to: string;
+  cc: string;
+  date: string;
+  /** The message as plain text; HTML-only mail is converted, never rendered. */
+  text: string;
+  unread: boolean;
+}
+
+function decodeBase64Url(data: string): string {
+  const b64 = data.replace(/-/g, "+").replace(/_/g, "/");
+  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+/** UTF-8 text → base64, a byte at a time: spreading a long body into one call overflows the stack. */
+function utf8Base64(text: string): string {
+  let binary = "";
+  for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function encodeBase64Url(text: string): string {
+  return utf8Base64(text).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/** Readable text from an HTML email: structure kept as line breaks, everything else dropped. */
+export function htmlToText(html: string): string {
+  return html
+    .replace(/<(script|style|head)[\s\S]*?<\/\1>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|tr|li|h[1-6]|blockquote)>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "• ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, n: string) => String.fromCharCode(Number(n)))
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** The best plain-text body in a MIME tree: text/plain first, then HTML turned into text. */
+export function messageText(part: GmailPart | undefined): string {
+  if (!part) return "";
+  const find = (p: GmailPart, type: string): string | null => {
+    if (p.mimeType === type && p.body?.data && !p.filename) return decodeBase64Url(p.body.data);
+    for (const child of p.parts ?? []) {
+      const found = find(child, type);
+      if (found) return found;
+    }
+    return null;
+  };
+  const plain = find(part, "text/plain");
+  if (plain) return plain.replace(/\r\n/g, "\n").trim();
+  const html = find(part, "text/html");
+  return html ? htmlToText(html) : "";
+}
+
+/** "Jane <jane@x.org>" → "jane@x.org". */
+export function addressOf(value: string): string {
+  const match = /<([^>]+)>/.exec(value);
+  return (match?.[1] ?? value).trim();
+}
+
+function allHeaders(message: FullMessage): (name: string) => string {
+  return (name) =>
+    message.payload?.headers?.find((h) => (h.name ?? "").toLowerCase() === name.toLowerCase())
+      ?.value ?? "";
+}
+
+export async function fetchGmailMessage(
+  account: { refreshToken: string; email?: string | undefined },
+  id: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<GmailMessageView> {
+  const accessToken = await accessTokenFromRefresh(account.refreshToken);
+  const message = await api<FullMessage>(
+    `/messages/${encodeURIComponent(id)}?format=full`,
+    accessToken,
+    fetchImpl,
+  );
+  const h = allHeaders(message);
+  return {
+    id: message.id ?? id,
+    threadId: message.threadId ?? id,
+    account: account.email ?? "",
+    subject: h("Subject") || "(no subject)",
+    from: h("From"),
+    replyTo: addressOf(h("Reply-To") || h("From")),
+    to: h("To"),
+    cc: h("Cc"),
+    date: h("Date"),
+    text: messageText(message.payload).slice(0, 60_000),
+    unread: (message.labelIds ?? []).includes("UNREAD"),
+  };
+}
+
+/** No line breaks in a header value: that is how a header gets injected. */
+function oneLine(value: string): string {
+  return value.replace(/[\r\n]+/g, " ").trim();
+}
+
+/** RFC 2047, so a subject with accents or emoji survives every mail server. */
+function encodeHeaderWord(value: string): string {
+  if (/^[\x20-\x7e]*$/.test(value)) return value;
+  return `=?UTF-8?B?${utf8Base64(value)}?=`;
+}
+
+/**
+ * The raw reply, ready for `messages.send`: threaded onto the original with
+ * In-Reply-To and References, "Re:" once, the original quoted underneath the
+ * way mail clients do, and the body in base64 so any language goes through.
+ */
+export function buildReply(opts: {
+  from: string;
+  to: string;
+  subject: string;
+  messageId: string;
+  references: string;
+  body: string;
+  quote?: { date: string; from: string; text: string } | undefined;
+}): string {
+  const subject = /^re:/i.test(opts.subject.trim())
+    ? opts.subject.trim()
+    : `Re: ${opts.subject.trim()}`;
+  const quoted = opts.quote
+    ? `\n\nOn ${oneLine(opts.quote.date)}, ${oneLine(opts.quote.from)} wrote:\n` +
+      opts.quote.text
+        .split("\n")
+        .slice(0, 80)
+        .map((line) => `> ${line}`)
+        .join("\n")
+    : "";
+  const body = utf8Base64(`${opts.body.trim()}${quoted}\n`).replace(/.{76}/g, "$&\r\n");
+  const references = [opts.references, opts.messageId].map(oneLine).filter(Boolean).join(" ");
+  const headers = [
+    `From: ${oneLine(opts.from)}`,
+    `To: ${oneLine(opts.to)}`,
+    `Subject: ${encodeHeaderWord(oneLine(subject))}`,
+    ...(opts.messageId ? [`In-Reply-To: ${oneLine(opts.messageId)}`] : []),
+    ...(references ? [`References: ${references}`] : []),
+    "MIME-Version: 1.0",
+    "Content-Type: text/plain; charset=UTF-8",
+    "Content-Transfer-Encoding: base64",
+  ];
+  return encodeBase64Url(`${headers.join("\r\n")}\r\n\r\n${body}`);
+}
+
+/**
+ * Replies to one message from the account it arrived in. Every header comes
+ * from the original as Gmail has it, not from the browser, so a reply can
+ * only ever go back to whoever wrote.
+ */
+export async function sendGmailReply(
+  account: { refreshToken: string; email?: string | undefined },
+  id: string,
+  body: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ id: string; threadId: string; to: string }> {
+  const accessToken = await accessTokenFromRefresh(account.refreshToken);
+  const original = await api<FullMessage>(
+    `/messages/${encodeURIComponent(id)}?format=full`,
+    accessToken,
+    fetchImpl,
+  );
+  const h = allHeaders(original);
+  const to = addressOf(h("Reply-To") || h("From"));
+  if (!to || !/@/.test(to)) throw new Error("That email has no address to reply to.");
+  const raw = buildReply({
+    from: account.email ?? "me",
+    to,
+    subject: h("Subject") || "(no subject)",
+    messageId: h("Message-ID") || h("Message-Id"),
+    references: h("References"),
+    body,
+    quote: { date: h("Date"), from: h("From"), text: messageText(original.payload) },
+  });
+  const response = await fetchImpl(`${API}/messages/send`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ raw, threadId: original.threadId }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (response.status === 403) {
+    throw new Error(
+      "This account has not allowed replies yet. Reconnect it from the Email page and allow sending.",
+    );
+  }
+  if (!response.ok) {
+    const detail = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
+    throw new Error(detail.error?.message ?? `Gmail did not send it (${response.status}).`);
+  }
+  const sent = (await response.json()) as { id?: string; threadId?: string };
+  return { id: sent.id ?? "", threadId: sent.threadId ?? original.threadId ?? "", to };
+}

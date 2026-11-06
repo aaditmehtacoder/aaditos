@@ -184,6 +184,8 @@ export interface GoogleStatus {
     connectedAt: string | null;
     main: boolean;
     gmail: boolean;
+    /** Granted gmail.send, so replies can go out from it. */
+    canReply: boolean;
     calendar: boolean;
   }>;
 }
