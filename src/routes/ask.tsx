@@ -3,6 +3,7 @@ import { differenceInCalendarDays } from "date-fns";
 import {
   AlertTriangle,
   ArrowDown,
+  ChevronsRight,
   ArrowUp,
   Check,
   Download,
@@ -35,6 +36,7 @@ import {
   type FileStore,
 } from "@/lib/chat/files";
 import type { ChatFile, ChatSummary } from "@/lib/chat/types";
+import { MAX_MESSAGE_CHARS } from "@/lib/compass/types";
 import { useProviderConfig } from "@/lib/integrations/use-integrations";
 import {
   TOOL_DONE_LABEL,
@@ -205,6 +207,12 @@ function AskPage() {
   const submit = (text = input) => {
     const clean = text.trim();
     if ((!clean && pending.length === 0) || busy || uploading || !configured) return;
+    if (clean.length > MAX_MESSAGE_CHARS) {
+      toast.error("That message is too long", {
+        description: `Up to ${MAX_MESSAGE_CHARS.toLocaleString("en-US")} characters. For more, attach it as a PDF.`,
+      });
+      return;
+    }
     const files = pending;
     setInput("");
     setPending([]);
@@ -399,6 +407,7 @@ function AskPage() {
                         followAgain();
                         void retry();
                       }}
+                      onContinue={() => submit("Continue exactly where you stopped.")}
                     />
                   ),
                 )}
@@ -459,8 +468,10 @@ function Composer({
   configured: boolean;
   local: boolean;
 }) {
+  const length = input.length;
+  const over = length > MAX_MESSAGE_CHARS;
   const canSend =
-    configured && !busy && !uploading && (input.trim().length > 0 || pending.length > 0);
+    configured && !busy && !uploading && !over && (input.trim().length > 0 || pending.length > 0);
 
   // Grows with what is typed, up to a third of the screen, then scrolls.
   useLayoutEffect(() => {
@@ -544,7 +555,7 @@ function Composer({
         className="block max-h-[220px] min-h-[40px] w-full resize-none bg-transparent px-2.5 py-2 text-[15px] leading-6 outline-none placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
       />
 
-      <div className="flex items-center justify-between gap-2 pt-1">
+      <div className="flex items-center gap-2 pt-1">
         <input
           ref={fileRef}
           type="file"
@@ -570,6 +581,18 @@ function Composer({
         >
           <Plus className="size-5" aria-hidden />
         </button>
+        <span className="ml-auto" />
+        {length > MAX_MESSAGE_CHARS * 0.8 ? (
+          <span
+            className={cn(
+              "text-[11.5px] tabular-nums",
+              over ? "font-medium text-urgent" : "text-muted-foreground",
+            )}
+            aria-live="polite"
+          >
+            {length.toLocaleString("en-US")} / {MAX_MESSAGE_CHARS.toLocaleString("en-US")}
+          </span>
+        ) : null}
         {busy || uploading ? (
           <button
             type="button"
@@ -816,7 +839,11 @@ function UserTurn({
               type="submit"
               size="sm"
               className="h-8 rounded-full bg-foreground px-3.5 text-[13px] text-background hover:bg-foreground/85"
-              disabled={busy || (!draft.trim() && turn.files.length === 0)}
+              disabled={
+                busy ||
+                draft.length > MAX_MESSAGE_CHARS ||
+                (!draft.trim() && turn.files.length === 0)
+              }
             >
               Send
             </Button>
@@ -893,12 +920,14 @@ function AssistantTurn({
   last,
   busy,
   onRetry,
+  onContinue,
 }: {
   turn: Turn;
   store: FileStore;
   last: boolean;
   busy: boolean;
   onRetry: () => void;
+  onContinue: () => void;
 }) {
   const waiting =
     turn.streaming && !turn.text && turn.images.length === 0 && !turn.tools.some((t) => !t.done);
@@ -969,6 +998,17 @@ function AssistantTurn({
             ) : null}
           </span>
         </div>
+      ) : null}
+
+      {last && turn.truncated && !turn.streaming ? (
+        <button
+          type="button"
+          onClick={onContinue}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 rounded-full border border-border px-3.5 py-1.5 text-[13px] transition-colors hover:bg-secondary disabled:opacity-50"
+        >
+          <ChevronsRight className="size-3.5" aria-hidden /> Continue
+        </button>
       ) : null}
 
       {!turn.streaming && (turn.text || turn.error) ? (

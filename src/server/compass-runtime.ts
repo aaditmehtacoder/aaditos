@@ -23,11 +23,14 @@ import OpenAI from "openai";
 
 import { hashIdentifier } from "@/lib/core/ids";
 import { COMPASS_TOOLS, isWriteTool, runTool } from "@/lib/compass/tools";
-import type {
-  CompassEvent,
-  CompassMessage,
-  CompassSnapshot,
-  CompassToolName,
+import {
+  HISTORY_CHAR_BUDGET,
+  HISTORY_WINDOW,
+  MAX_CAPTURE_CHARS,
+  type CompassEvent,
+  type CompassMessage,
+  type CompassSnapshot,
+  type CompassToolName,
 } from "@/lib/compass/types";
 
 import { ExhaustedError, NoKeyError, classify, ladder, withFallback, type Rung } from "./ai";
@@ -37,8 +40,7 @@ import { FIND_IMAGES_TOOL, findImages } from "./image-search";
 const MAX_TOOL_ROUNDS = 4;
 /** Mid-stream provider failures before any text: how many times to restart the round further down the ladder. */
 const MAX_STREAM_RESTARTS = 2;
-/** Messages of history that travel with each turn. Files in them travel too. */
-export const HISTORY_WINDOW = 20;
+export { HISTORY_WINDOW };
 /** Generated pictures leave the model as this. WebP at 85 is a quarter of the PNG. */
 const IMAGE_MIME = "image/webp";
 
@@ -77,12 +79,11 @@ export function systemInstructions(
     "- Keep everything age-appropriate for a 14-year-old. No sexual, violent, self-harm, extremist, gambling, alcohol/drug, or otherwise adult content, in text or in pictures.",
     "- Never give medical, legal, or financial advice. Point to a parent, teacher, or counsellor instead.",
     "- If a message suggests self-harm, abuse, or a crisis, stop planning, respond with care, and name a trusted adult and the 988 Suicide & Crisis Lifeline (call or text 988 in the US).",
-    "- Do not do graded work for them. Help them understand, plan, outline and revise their own work; never write something they would hand in as theirs.",
     "- Never ask for or repeat passwords, API keys, addresses, or payment details.",
     "",
     "How to answer:",
     "- Lead with the answer. No preamble, no restating the question, no 'Great question'.",
-    "- As long as it needs to be and no longer. One line when one line is the answer; a full explanation, a worked solution, a study guide or working code when that is what was asked for.",
+    "- As long as it needs to be and no longer. One line when one line is the answer; a full explanation, a worked solution, a complete essay, a study guide or working code when that is what was asked for.",
     "- Be specific to their actual situation when it is about their planner. Use their exact task and class names.",
     "- Say the hard thing when it is true. If five assignments are missing, lead with that instead of building an encouraging plan around it.",
     "- Give times in their local timezone, e.g. '4:00 PM'. Say 'tomorrow' and 'Friday', not ISO timestamps.",
@@ -168,7 +169,14 @@ type InputItem = Record<string, unknown>;
  * messages later — which is why `HISTORY_WINDOW` is a window.
  */
 export function toInputItems(messages: CompassMessage[]): InputItem[] {
-  return messages.slice(-HISTORY_WINDOW).map((m) => {
+  const recent = messages.slice(-HISTORY_WINDOW);
+  // A few huge pastes can outgrow every model's per-minute ceiling; the oldest
+  // go first, and the message being answered always stays.
+  let total = recent.reduce((n, m) => n + m.content.length, 0);
+  while (recent.length > 1 && total > HISTORY_CHAR_BUDGET) {
+    total -= recent.shift()?.content.length ?? 0;
+  }
+  return recent.map((m) => {
     if (m.role === "assistant") return { role: "assistant", content: m.content };
     const attachments = m.attachments ?? [];
     if (attachments.length === 0) return { role: "user", content: m.content };
@@ -250,6 +258,8 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
 
   let inputTokens = 0;
   let outputTokens = 0;
+  // The answer reached max_output_tokens and stopped mid-thought.
+  let truncated = false;
 
   // Where on the ladder this turn currently stands. A rung that fails mid-stream
   // is not retried; the next round starts below it.
@@ -387,6 +397,10 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
           }
         } else if (type === "response.completed" || type === "response.incomplete") {
           const response = event["response"] as Record<string, unknown> | undefined;
+          const details = response?.["incomplete_details"] as Record<string, unknown> | undefined;
+          if (type === "response.incomplete" && details?.["reason"] === "max_output_tokens") {
+            truncated = true;
+          }
           const usage = response?.["usage"] as Record<string, unknown> | undefined;
           inputTokens += Number(usage?.["input_tokens"] ?? 0);
           outputTokens += Number(usage?.["output_tokens"] ?? 0);
@@ -486,13 +500,20 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
       if (!sawText && !sawImage) {
         yield {
           type: "error",
-          code: "empty_response",
-          message: "The assistant returned an empty response. Try rephrasing your question.",
+          code: truncated ? "too_long" : "empty_response",
+          message: truncated
+            ? "It ran out of room while still thinking. Ask for one part at a time and it will fit."
+            : "The assistant returned an empty response. Try rephrasing your question.",
           retryable: true,
         };
         return;
       }
-      yield { type: "done", usage: { inputTokens, outputTokens }, model: rung.model };
+      yield {
+        type: "done",
+        usage: { inputTokens, outputTokens },
+        model: rung.model,
+        ...(truncated ? { truncated: true } : {}),
+      };
       return;
     }
 
@@ -682,7 +703,7 @@ export async function captureItems(
   const safetyIdentifier = await hashIdentifier(ctx.clientId, serverEnv.safetyIdentifierSalt);
   const images = (ctx.images ?? []).slice(0, 4);
   const content: Array<Record<string, unknown>> = [];
-  const typed = text.slice(0, 8000).trim();
+  const typed = text.slice(0, MAX_CAPTURE_CHARS).trim();
   if (typed) content.push({ type: "input_text", text: typed });
   else if (images.length > 0) {
     content.push({ type: "input_text", text: "File everything in the attached image(s)." });

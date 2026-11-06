@@ -8,6 +8,7 @@
 
 import { z } from "zod";
 
+import { MAX_CAPTURE_CHARS, MAX_MESSAGE_CHARS } from "@/lib/compass/types";
 import { SYNCABLE } from "@/lib/integrations/contracts";
 
 /** A data URL for one image: png, jpeg, webp or gif, at most ~1.6 MB encoded. */
@@ -77,7 +78,9 @@ export function attachmentUrlAllowed(url: string, storageOrigin: string | undefi
 export const CompassMessageSchema = z
   .object({
     role: z.enum(["user", "assistant"]),
-    content: z.string().max(16_000),
+    content: z.string().max(MAX_MESSAGE_CHARS, {
+      message: `A message can be up to ${MAX_MESSAGE_CHARS.toLocaleString("en-US")} characters.`,
+    }),
     /** No small cap: with Storage URLs each one is a hundred bytes. */
     attachments: z.array(WireAttachmentSchema).max(60).optional(),
   })
@@ -118,7 +121,10 @@ export const CompassSnapshotSchema = z
 
 export const CompassRequestSchema = z
   .object({
-    messages: z.array(CompassMessageSchema).min(1).max(40),
+    // The client sends a window; older clients sent the whole chat. Either
+    // way the runtime keeps only the last HISTORY_WINDOW, so a long chat must
+    // never be refused here.
+    messages: z.array(CompassMessageSchema).min(1).max(400),
     snapshot: CompassSnapshotSchema,
     clientId: z.string().min(8).max(64),
   })
@@ -145,7 +151,12 @@ export const CompassRequestSchema = z
 export const CaptureRequestSchema = z
   .object({
     /** Optional when images are attached: a photo alone is enough to file. */
-    text: z.string().max(8000).default(""),
+    text: z
+      .string()
+      .max(MAX_CAPTURE_CHARS, {
+        message: `That is too long to sort in one go (up to ${MAX_CAPTURE_CHARS.toLocaleString("en-US")} characters).`,
+      })
+      .default(""),
     /** Up to four images. Vercel caps a request body at 4.5 MB, so the total is capped too. */
     images: z.array(ImageDataUrlSchema).max(4).default([]),
     courses: z.array(z.string().max(120)).max(20).default([]),

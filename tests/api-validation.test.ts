@@ -5,6 +5,7 @@
  * credentials, so they are tested directly rather than through a running server.
  */
 
+import { MAX_CAPTURE_CHARS, MAX_MESSAGE_CHARS } from "@/lib/compass/types";
 import { describe, expect, it } from "vitest";
 
 import { checkRateLimit } from "@/server/rate-limit";
@@ -52,14 +53,28 @@ describe("CompassRequestSchema", () => {
     ).toBe(false);
   });
 
-  it("rejects an oversized message", () => {
-    // A pasted essay fits; a pasted book does not.
+  it("takes a long paste, and refuses a book with a sentence that says the limit", () => {
+    // 16,000 used to be the ceiling, which a long essay or answer went past.
     expect(
       CompassRequestSchema.safeParse({
         ...validCompass,
-        messages: [{ role: "user", content: "x".repeat(16_001) }],
+        messages: [{ role: "user", content: "x".repeat(60_000) }],
       }).success,
-    ).toBe(false);
+    ).toBe(true);
+    const tooLong = CompassRequestSchema.safeParse({
+      ...validCompass,
+      messages: [{ role: "user", content: "x".repeat(MAX_MESSAGE_CHARS + 1) }],
+    });
+    expect(tooLong.success).toBe(false);
+    expect(tooLong.error?.issues[0]?.message).toMatch(/up to 100,000 characters/);
+  });
+
+  it("never refuses a long conversation; the server keeps a window of it", () => {
+    const messages = Array.from({ length: 120 }, (_, i) => ({
+      role: i % 2 === 0 ? "user" : "assistant",
+      content: `message ${i}`,
+    }));
+    expect(CompassRequestSchema.safeParse({ ...validCompass, messages }).success).toBe(true);
   });
 
   it("rejects an unknown role", () => {
@@ -122,8 +137,13 @@ describe("CaptureRequestSchema", () => {
 
   it("accepts a whole pasted email, and rejects one past the ceiling", () => {
     const base = { clientId: "abcdefgh12345678" };
-    expect(CaptureRequestSchema.safeParse({ ...base, text: "x".repeat(7999) }).success).toBe(true);
-    expect(CaptureRequestSchema.safeParse({ ...base, text: "x".repeat(8001) }).success).toBe(false);
+    // 8,000 used to be the ceiling; a long club email went past it.
+    expect(CaptureRequestSchema.safeParse({ ...base, text: "x".repeat(30_000) }).success).toBe(
+      true,
+    );
+    expect(
+      CaptureRequestSchema.safeParse({ ...base, text: "x".repeat(MAX_CAPTURE_CHARS + 1) }).success,
+    ).toBe(false);
   });
 
   it("rejects text that is too short", () => {

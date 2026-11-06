@@ -1,5 +1,18 @@
 /** Wire types shared by the assistant client and the `/api/compass` server route. */
 
+/**
+ * The longest single message, in characters: about 25,000 tokens, a 40-page
+ * paper pasted whole. Bigger than the fastest model's per-minute ceiling, so a
+ * message this long is answered by a model further down the ladder.
+ */
+export const MAX_MESSAGE_CHARS = 100_000;
+/** The longest thing the capture box will sort in one go. */
+export const MAX_CAPTURE_CHARS = 40_000;
+/** Messages of history that travel with each turn. Files in them travel too. */
+export const HISTORY_WINDOW = 20;
+/** Characters of history sent with one turn; past this the oldest messages are left out. */
+export const HISTORY_CHAR_BUDGET = 150_000;
+
 import type { TaskDraft } from "@/lib/core/nl-task";
 import type { Priority, TaskCategory } from "@/lib/core/types";
 
@@ -171,6 +184,8 @@ export type CompassEvent =
       usage?: { inputTokens: number; outputTokens: number } | undefined;
       /** Which model actually answered, after any fallback. */
       model?: string | undefined;
+      /** The answer stopped at the length ceiling; "Continue" picks it up. */
+      truncated?: boolean | undefined;
     }
   | { type: "error"; code: string; message: string; retryable: boolean };
 

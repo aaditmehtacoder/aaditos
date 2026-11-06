@@ -92,6 +92,19 @@ describe("toInputItems", () => {
     expect(items).toHaveLength(HISTORY_WINDOW);
     expect(items[0]).toEqual({ role: "assistant", content: "m5" });
   });
+
+  it("drops the oldest messages when the window is too big for any model, never the newest", () => {
+    const huge = "x".repeat(60_000);
+    const items = toInputItems([
+      { role: "user", content: huge },
+      { role: "assistant", content: huge },
+      { role: "user", content: huge },
+      { role: "assistant", content: "short" },
+      { role: "user", content: "and now?" },
+    ]);
+    expect(items).toHaveLength(4);
+    expect(items[items.length - 1]).toEqual({ role: "user", content: "and now?" });
+  });
 });
 
 describe("attachmentUrlAllowed", () => {
@@ -136,10 +149,10 @@ describe("CompassMessageSchema with files", () => {
 
   it("accepts a pasted essay, and rejects one past the ceiling", () => {
     expect(
-      CompassMessageSchema.safeParse({ role: "user", content: "x".repeat(16_000) }).success,
+      CompassMessageSchema.safeParse({ role: "user", content: "x".repeat(100_000) }).success,
     ).toBe(true);
     expect(
-      CompassMessageSchema.safeParse({ role: "user", content: "x".repeat(16_001) }).success,
+      CompassMessageSchema.safeParse({ role: "user", content: "x".repeat(100_001) }).success,
     ).toBe(false);
   });
 

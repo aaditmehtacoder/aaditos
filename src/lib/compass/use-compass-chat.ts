@@ -36,12 +36,13 @@ import { newId } from "@/lib/core/ids";
 import { nowISO } from "@/lib/core/time";
 import { streamCompass } from "@/lib/compass/client";
 import { buildSnapshot } from "@/lib/compass/snapshot";
-import type {
-  CompassEvent,
-  CompassMessage,
-  CompassProposal,
-  CompassToolName,
-  WireAttachment,
+import {
+  HISTORY_WINDOW,
+  type CompassEvent,
+  type CompassMessage,
+  type CompassProposal,
+  type CompassToolName,
+  type WireAttachment,
 } from "@/lib/compass/types";
 import { useInbox } from "@/lib/integrations/use-integrations";
 import { useOS } from "@/lib/store";
@@ -93,6 +94,8 @@ export interface Turn {
   error?: { message: string; code: string; retryable: boolean } | undefined;
   streaming: boolean;
   model?: string | undefined;
+  /** Stopped at the length ceiling, so it can be continued. */
+  truncated?: boolean | undefined;
 }
 
 /** A file the user picked, already prepared, waiting to be sent. */
@@ -286,7 +289,11 @@ export function useCompassChat(): CompassChat {
    */
   const wireHistory = useCallback(
     async (history: Turn[], outgoing: { text: string; files: ChatFile[] }) => {
-      const prior = history.filter((t) => t.text.trim() || t.files.length > 0);
+      // Only what the server will read: the window, minus the new message.
+      // Sending the whole chat made a long conversation fail outright.
+      const prior = history
+        .filter((t) => t.text.trim() || t.files.length > 0)
+        .slice(-(HISTORY_WINDOW - 1));
       const messages: CompassMessage[] = [];
       for (const t of prior) {
         if (t.role === "assistant") {
@@ -424,7 +431,12 @@ export function useCompassChat(): CompassChat {
               }));
               break;
             case "done":
-              patch((t) => ({ ...t, streaming: false, model: event.model }));
+              patch((t) => ({
+                ...t,
+                streaming: false,
+                model: event.model,
+                truncated: event.truncated,
+              }));
               break;
             default:
               break;
