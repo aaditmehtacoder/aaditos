@@ -37,6 +37,9 @@ export type { GoogleResult, GoogleStatus };
  * course list has a materially better chance of being allowed at all than one
  * that can also write events and read mail.
  */
+/** Just enough to read one more mailbox and know whose it is. */
+export const MAIL_ONLY_SCOPES = ["openid", "email"] as const;
+
 export const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/calendar.readonly",
   "https://www.googleapis.com/auth/classroom.courses.readonly",
@@ -56,17 +59,25 @@ export function googleConfigured(): boolean {
 export function buildConsentUrl(opts: {
   redirectUri: string;
   state: string;
-  /** Opt-in scopes (Gmail) requested on top of the read-only base set. */
+  /** Opt-in scopes (Gmail) requested on top of the base set. */
   extraScopes?: string[] | undefined;
+  /** Replaces the base set: an extra email account needs only its mail. */
+  baseScopes?: readonly string[] | undefined;
 }): string {
   const url = new URL(AUTH_ENDPOINT);
   url.searchParams.set("client_id", serverEnv.googleClientId ?? "");
   url.searchParams.set("redirect_uri", opts.redirectUri);
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", [...GOOGLE_SCOPES, ...(opts.extraScopes ?? [])].join(" "));
+  url.searchParams.set(
+    "scope",
+    [...new Set([...(opts.baseScopes ?? GOOGLE_SCOPES), ...(opts.extraScopes ?? [])])].join(" "),
+  );
   // offline + consent is what actually returns a refresh token.
+  // select_account makes Google ask which account, every time: without it
+  // Google quietly reuses whichever account the browser is signed into, so a
+  // second email could never be added.
   url.searchParams.set("access_type", "offline");
-  url.searchParams.set("prompt", "consent");
+  url.searchParams.set("prompt", "consent select_account");
   url.searchParams.set("include_granted_scopes", "true");
   url.searchParams.set("state", opts.state);
   return url.toString();

@@ -95,6 +95,20 @@ export interface SyncState {
 }
 
 export const INBOX_KEY = ["inbox"] as const;
+export const MAIL_KEY = ["mail-accounts"] as const;
+
+/** Per-mailbox sync state and unread counts from the last Gmail sync. */
+export function useMailAccounts(): NonNullable<SyncPayload["mail"]> {
+  const { data } = useQuery<NonNullable<SyncPayload["mail"]>>({
+    queryKey: MAIL_KEY,
+    queryFn: () => [],
+    staleTime: Infinity,
+    gcTime: Infinity,
+    enabled: false,
+    initialData: [],
+  });
+  return data ?? [];
+}
 
 /**
  * The merged Inbox from the last sync, kept in the query cache.
@@ -221,6 +235,7 @@ export function useSync() {
         }
 
         queryClient.setQueryData(SYNC_PAYLOAD_KEY, payload);
+        if (payload.mail) queryClient.setQueryData(MAIL_KEY, payload.mail);
         if (payload.inbox) {
           // Merge rather than replace: a sync of only some providers must not
           // empty the items the others produced last time.

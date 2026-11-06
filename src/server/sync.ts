@@ -17,7 +17,7 @@ import type {
   SyncRunResult,
 } from "@/lib/integrations/contracts";
 
-import { readGoogleSession, type GoogleSessionData } from "./google-session";
+import { mainAccount, readGoogleAccounts, type GoogleAccount } from "./google-session";
 import { fetchAeries } from "./providers/aeries";
 import { fetchGithub } from "./providers/github";
 import { fetchGmail } from "./providers/gmail";
@@ -94,16 +94,17 @@ export async function runSync(opts: SyncOptions): Promise<SyncPayload> {
     );
   }
 
-  // Google and Gmail share one consent; read the sealed session once.
-  const googleSession: Promise<GoogleSessionData> =
-    wanted.has("google") || wanted.has("gmail") ? readGoogleSession() : Promise.resolve({});
+  // Google and Gmail share the sealed cookie; read it once. Calendar and
+  // Classroom come from the main account, mail from every account.
+  const googleAccounts: Promise<GoogleAccount[]> =
+    wanted.has("google") || wanted.has("gmail") ? readGoogleAccounts() : Promise.resolve([]);
 
   if (wanted.has("google")) {
     tasks.push(
       run("google", payload, async () => {
-        const session = await googleSession;
+        const main = mainAccount(await googleAccounts);
         const result = await fetchGoogle({
-          refreshToken: session.refreshToken ?? null,
+          refreshToken: main?.refreshToken ?? null,
           userId: opts.userId,
         });
         payload.google = result;
@@ -128,22 +129,27 @@ export async function runSync(opts: SyncOptions): Promise<SyncPayload> {
   if (wanted.has("gmail")) {
     tasks.push(
       run("gmail", payload, async () => {
-        const session = await googleSession;
+        const accounts = await googleAccounts;
         const result = await fetchGmail({
-          refreshToken: session.refreshToken ?? null,
-          grantedScope: session.scope ?? "",
+          accounts: accounts.map((a) => ({
+            refreshToken: a.refreshToken,
+            grantedScope: a.scope,
+            email: a.email,
+          })),
         });
         if (!result.configured || !result.connected) {
           return notConfigured(result.error ?? "Gmail is not connected");
         }
         inbox.push(...result.items);
+        payload.mail = result.accounts;
         return {
           ok: result.ok,
           imported: result.items.length,
           updated: 0,
           skipped: 0,
           message: result.ok
-            ? `${result.items.length} recent emails`
+            ? `${result.items.length} recent emails from ${result.accounts.length} account${result.accounts.length === 1 ? "" : "s"}` +
+              (result.error ? ` · ${result.error}` : "")
             : (result.error ?? "Gmail request failed"),
           needsCredentials: false,
         };

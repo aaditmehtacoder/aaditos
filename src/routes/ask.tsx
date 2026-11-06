@@ -50,6 +50,9 @@ import { isImageFile, prepareImage } from "@/lib/repo/blobs";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/ask")({
+  // `?q=` prefills the box, so another page can hand over a question.
+  validateSearch: (search: Record<string, unknown>): { q?: string } =>
+    typeof search["q"] === "string" ? { q: search["q"] } : {},
   head: () => ({
     meta: [
       { title: "Ask" },
@@ -64,6 +67,7 @@ export const Route = createFileRoute("/ask")({
 
 const SUGGESTIONS = [
   "What should I work on right now?",
+  "What's new in my email?",
   "Explain how to add 3/4 + 5/6",
   "Compare mitosis and meiosis in a table",
   "Show me pictures of a Komodo dragon",
@@ -79,7 +83,8 @@ function AskPage() {
   const config = useProviderConfig();
   const chat = useCompassChat();
   const { turns, busy, uploading, send, stop, retry, edit, fileStore } = chat;
-  const [input, setInput] = useState("");
+  const { q } = Route.useSearch();
+  const [input, setInput] = useState(q ?? "");
   const [pending, setPending] = useState<Pending[]>([]);
   const [dragging, setDragging] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);

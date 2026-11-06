@@ -91,6 +91,10 @@ export interface InboxItem {
   url?: string | undefined;
   /** ISO instant the item was created or last changed. */
   at: string;
+  /** Which mailbox an email came from, when more than one is connected. */
+  account?: string | undefined;
+  /** Not opened yet. Only email knows this. */
+  unread?: boolean | undefined;
 }
 
 export interface AeriesResult {
@@ -172,6 +176,16 @@ export interface GoogleStatus {
   missingScopes: string[];
   /** True once the stored consent includes read-only Gmail. */
   gmail: boolean;
+  /** How many Google accounts the cookie can hold. */
+  maxAccounts: number;
+  /** Every connected Google account. The main one feeds Calendar and Classroom. */
+  accounts: Array<{
+    email: string | null;
+    connectedAt: string | null;
+    main: boolean;
+    gmail: boolean;
+    calendar: boolean;
+  }>;
 }
 
 export interface SyncPayload {
@@ -182,4 +196,11 @@ export interface SyncPayload {
   aeries?: AeriesResult;
   /** Merged from every inbox-producing provider, newest first. */
   inbox?: InboxItem[];
+  /** One line per connected mailbox: did it sync, and how much is unread. */
+  mail?: Array<{
+    email: string;
+    ok: boolean;
+    unread?: number | undefined;
+    error?: string | undefined;
+  }>;
 }

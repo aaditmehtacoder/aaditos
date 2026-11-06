@@ -71,6 +71,8 @@ export function buildSnapshot(
       from: i.from,
       detail: i.detail ? i.detail.slice(0, 200) : undefined,
       at: i.at,
+      account: i.account,
+      unread: i.unread,
     })),
     courses: workspace.courses.filter((c) => c.active).map((c) => c.name),
     tasks: workspace.tasks

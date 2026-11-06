@@ -3,9 +3,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { withBase } from "@/lib/base-path";
 import { newId } from "@/lib/core/ids";
 import { GMAIL_SCOPE } from "@/server/providers/gmail";
-import { buildConsentUrl, googleConfigured } from "@/server/providers/google";
+import { MAIL_ONLY_SCOPES, buildConsentUrl, googleConfigured } from "@/server/providers/google";
 import { serverEnv } from "@/server/env";
-import { encryptionReady, writeGoogleSession } from "@/server/google-session";
+import { encryptionReady, writeOauthState } from "@/server/google-session";
 
 /**
  * The redirect URI must match the one registered in Google Cloud exactly.
@@ -33,13 +33,18 @@ export function googleRedirectUri(request: Request): string {
  * `?scope=gmail` adds the read-only Gmail scope to the request. It is kept
  * out of the default so connecting Calendar and Classroom never asks for
  * mail; Gmail is a separate Connect button with its own consent.
+ *
+ * `?add=mail` connects one more mailbox: Gmail read-only and the address,
+ * nothing else. Google always shows its account picker, so this is how a
+ * second personal account or a school account gets added.
  */
 export const Route = createFileRoute("/api/google/auth")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const extra =
-          new URL(request.url).searchParams.get("scope") === "gmail" ? [GMAIL_SCOPE] : [];
+        const params = new URL(request.url).searchParams;
+        const addMail = params.get("add") === "mail";
+        const extra = addMail || params.get("scope") === "gmail" ? [GMAIL_SCOPE] : [];
         if (!googleConfigured()) {
           return problem(
             "Google is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on the server.",
@@ -52,7 +57,7 @@ export const Route = createFileRoute("/api/google/auth")({
         }
 
         const state = newId();
-        await writeGoogleSession({ oauthState: state });
+        await writeOauthState(state);
 
         return new Response(null, {
           status: 302,
@@ -61,6 +66,7 @@ export const Route = createFileRoute("/api/google/auth")({
               redirectUri: googleRedirectUri(request),
               state,
               extraScopes: extra,
+              baseScopes: addMail ? MAIL_ONLY_SCOPES : undefined,
             }),
             "cache-control": "no-store",
           },

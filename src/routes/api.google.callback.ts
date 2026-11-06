@@ -1,7 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { withBase } from "@/lib/base-path";
 import { exchangeCode } from "@/server/providers/google";
-import { readGoogleSession, writeGoogleSession } from "@/server/google-session";
+import {
+  MAX_GOOGLE_ACCOUNTS,
+  readGoogleAccounts,
+  readOauthState,
+  saveGoogleAccount,
+} from "@/server/google-session";
 
 import { googleRedirectUri } from "./api.google.auth";
 
@@ -10,6 +16,11 @@ import { googleRedirectUri } from "./api.google.auth";
  *
  * The `state` value is compared against the one stored in the sealed session,
  * so a consent response that did not originate from this browser is rejected.
+ * The account is added next to any already connected, or refreshed when that
+ * address was connected before.
+ *
+ * Every redirect back carries the app's base path: behind the hidden prefix,
+ * a bare "/integrations" is the hosting site's page, not this app's.
  */
 export const Route = createFileRoute("/api/google/callback")({
   server: {
@@ -29,26 +40,30 @@ export const Route = createFileRoute("/api/google/callback")({
         const state = url.searchParams.get("state");
         if (!code || !state) return back("Google did not return an authorization code.");
 
-        const session = await readGoogleSession();
-        if (!session.oauthState || session.oauthState !== state) {
+        const expected = await readOauthState();
+        if (!expected || expected !== state) {
           return back("That sign-in request did not start in this browser. Please try again.");
         }
 
+        let email: string | undefined;
         try {
           const tokens = await exchangeCode({
             code,
             redirectUri: googleRedirectUri(request),
           });
-          // `include_granted_scopes` means a Gmail consent comes back with the
-          // calendar scopes too, but merging guards against a client without it.
-          const held = new Set([...(session.scope ?? "").split(" "), ...tokens.scope.split(" ")]);
-          held.delete("");
-          await writeGoogleSession({
+          email = tokens.email;
+          const before = await readGoogleAccounts();
+          const known = before.some((a) => email && a.email?.toLowerCase() === email.toLowerCase());
+          if (!known && before.length >= MAX_GOOGLE_ACCOUNTS) {
+            return back(
+              `Up to ${MAX_GOOGLE_ACCOUNTS} Google accounts can be connected. Remove one first.`,
+            );
+          }
+          await saveGoogleAccount({
             refreshToken: tokens.refreshToken,
             email: tokens.email,
-            scope: [...held].join(" "),
+            scope: tokens.scope,
             connectedAt: new Date().toISOString(),
-            oauthState: undefined,
           });
         } catch (error) {
           // Never log the code or any token material.
@@ -58,9 +73,10 @@ export const Route = createFileRoute("/api/google/callback")({
           return back(error instanceof Error ? error.message : "Google sign-in failed.");
         }
 
+        const done = new URLSearchParams({ google: "connected", ...(email ? { email } : {}) });
         return new Response(null, {
           status: 302,
-          headers: { location: "/integrations?google=connected", "cache-control": "no-store" },
+          headers: { location: withBase(`integrations?${done}`), "cache-control": "no-store" },
         });
       },
     },
@@ -68,7 +84,7 @@ export const Route = createFileRoute("/api/google/callback")({
 });
 
 function back(message: string): Response {
-  const target = `/integrations?google=error&message=${encodeURIComponent(message)}`;
+  const target = withBase(`integrations?google=error&message=${encodeURIComponent(message)}`);
   return new Response(null, {
     status: 302,
     headers: { location: target, "cache-control": "no-store" },

@@ -76,6 +76,9 @@ export interface CompactInboxItem {
   from?: string | undefined;
   detail?: string | undefined;
   at: string;
+  /** The mailbox an email arrived in, when several are connected. */
+  account?: string | undefined;
+  unread?: boolean | undefined;
 }
 
 export interface CompassSnapshot {

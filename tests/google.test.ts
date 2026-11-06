@@ -55,7 +55,24 @@ describe("buildConsentUrl", () => {
 
   it("asks for offline access so a refresh token comes back", () => {
     expect(url.searchParams.get("access_type")).toBe("offline");
-    expect(url.searchParams.get("prompt")).toBe("consent");
+    expect(url.searchParams.get("prompt")).toContain("consent");
+  });
+
+  it("always shows Google's account picker, so a second account can be added", () => {
+    expect(url.searchParams.get("prompt")?.split(" ")).toContain("select_account");
+  });
+
+  it("asks an extra mailbox for its mail and address only", () => {
+    const mail = new URL(
+      buildConsentUrl({
+        redirectUri: "https://app.example.com/api/google/callback",
+        state: "abc",
+        baseScopes: ["openid", "email"],
+        extraScopes: ["https://www.googleapis.com/auth/gmail.readonly"],
+      }),
+    );
+    const scopes = mail.searchParams.get("scope")?.split(" ") ?? [];
+    expect(scopes).toEqual(["openid", "email", "https://www.googleapis.com/auth/gmail.readonly"]);
   });
 
   it("carries the state value for CSRF protection", () => {

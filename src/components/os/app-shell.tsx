@@ -5,6 +5,7 @@ import {
   CloudOff,
   Home,
   LogOut,
+  Mail,
   Monitor,
   Moon,
   RefreshCw,
@@ -32,27 +33,29 @@ import { useOS } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 /**
- * Three places, and that is the whole app.
+ * Four places, and that is the whole app.
  *
  * The previous shell had eleven destinations, a collapsible sidebar, a command
  * palette, a quick-add dialog, a notification bell and a floating assistant
  * button. Every one of them was a decision to make before doing anything, and
  * the cost showed: the pages behind most of them held no data at all.
  *
- * What is left is what gets used daily — the day, the classes, and the thing
- * that answers questions. Settings lives behind the avatar because it is
+ * What is left is what gets used daily — the day, the classes, the thing
+ * that answers questions, and the inboxes. Settings lives behind the avatar because it is
  * somewhere you go on purpose, twice a year.
  */
 const NAV = [
   { to: "/", label: "Today", icon: Home },
   { to: "/classes", label: "Classes", icon: BookOpen },
   { to: "/ask", label: "Ask", icon: Sparkles },
+  { to: "/email", label: "Email", icon: Mail },
 ] as const;
 
 const TITLES: Record<string, string> = {
   "/": "Today",
   "/classes": "Classes",
   "/ask": "Ask",
+  "/email": "Email",
   "/settings": "Settings",
   "/integrations": "Integrations",
 };
@@ -225,7 +228,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Logo />
 
         {/* The tabs live up here on a wide screen and along the bottom on a
-            phone, where the thumb is. Same three destinations either way. */}
+            phone, where the thumb is. Same four destinations either way. */}
         <nav aria-label="Primary" className="ml-4 hidden items-center gap-1 sm:flex">
           {NAV.map((item) => {
             const active = isActive(pathname, item.to);
@@ -262,7 +265,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <nav
         aria-label="Primary"
-        className="sticky bottom-0 z-20 grid grid-cols-3 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
+        className="sticky bottom-0 z-20 grid grid-cols-4 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
       >
         {NAV.map((item) => {
           const active = isActive(pathname, item.to);

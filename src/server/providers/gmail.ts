@@ -10,6 +10,9 @@
  * Read-only throughout. Nothing here can send, archive, label or delete.
  * The query skips promotions and social mail; a club email with four dates
  * in it is exactly what should get through.
+ *
+ * Every connected account with the Gmail permission is read, side by side:
+ * each item says which mailbox it came from and opens in that account.
  */
 
 import type { InboxItem } from "@/lib/integrations/contracts";
@@ -30,8 +33,13 @@ interface GmailMessage {
   threadId?: string;
   snippet?: string;
   internalDate?: string;
+  labelIds?: string[];
   payload?: { headers?: GmailHeader[] };
 }
+
+/** Recent inbox mail, newest first, without promotions and social. */
+export const INBOX_QUERY = "in:inbox newer_than:14d -category:promotions -category:social";
+const PER_ACCOUNT = 25;
 
 function header(message: GmailMessage, name: string): string {
   const found = message.payload?.headers?.find(
@@ -46,8 +54,14 @@ export function senderName(from: string): string {
   return (match?.[1] ?? from).trim();
 }
 
+/** Opens the thread in the right account, not whichever is signed in first. */
+export function gmailUrl(threadId: string, account?: string): string {
+  const who = account ? `?authuser=${encodeURIComponent(account)}` : "";
+  return `https://mail.google.com/mail/${who}#all/${threadId}`;
+}
+
 /** Pure: Gmail message resources → inbox items. Exported for tests. */
-export function normalizeGmailMessages(messages: unknown): InboxItem[] {
+export function normalizeGmailMessages(messages: unknown, account?: string): InboxItem[] {
   if (!Array.isArray(messages)) return [];
   const out: InboxItem[] = [];
   for (const entry of messages) {
@@ -64,7 +78,11 @@ export function normalizeGmailMessages(messages: unknown): InboxItem[] {
       title: subject,
       detail: snippet ? snippet.slice(0, 200) : undefined,
       from: from || undefined,
-      url: `https://mail.google.com/mail/u/0/#inbox/${message.threadId ?? message.id}`,
+      url: account
+        ? gmailUrl(message.threadId ?? message.id, account)
+        : `https://mail.google.com/mail/u/0/#inbox/${message.threadId ?? message.id}`,
+      account,
+      unread: (message.labelIds ?? []).includes("UNREAD"),
       at:
         Number.isFinite(millis) && millis > 0
           ? new Date(millis).toISOString()
@@ -91,46 +109,45 @@ async function api<T>(path: string, accessToken: string, fetchImpl: typeof fetch
   return (await response.json()) as T;
 }
 
+export interface GmailAccountSummary {
+  email: string;
+  ok: boolean;
+  /** Unread conversations in the inbox, all of them, not just the recent ones listed. */
+  unread?: number | undefined;
+  error?: string | undefined;
+}
+
 export interface GmailResult {
   configured: boolean;
-  /** True once the stored token carries the Gmail scope. */
+  /** True once at least one connected account carries the Gmail scope. */
   connected: boolean;
   ok: boolean;
   items: InboxItem[];
+  accounts: GmailAccountSummary[];
   error?: string;
 }
 
-export async function fetchGmail(
-  opts: { refreshToken: string | null; grantedScope: string },
-  fetchImpl: typeof fetch = fetch,
-): Promise<GmailResult> {
-  if (!googleConfigured()) {
-    return {
-      configured: false,
-      connected: false,
-      ok: false,
-      items: [],
-      error: "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are not set on the server.",
-    };
-  }
-  if (!opts.refreshToken || !opts.grantedScope.split(" ").includes(GMAIL_SCOPE)) {
-    return {
-      configured: true,
-      connected: false,
-      ok: false,
-      items: [],
-      error: "Gmail is not connected yet. Use Connect Gmail on the Integrations page.",
-    };
-  }
+export interface GmailAccountInput {
+  refreshToken: string;
+  grantedScope: string;
+  email?: string | undefined;
+}
 
+async function fetchOne(
+  account: GmailAccountInput,
+  fetchImpl: typeof fetch,
+): Promise<{ items: InboxItem[]; summary: GmailAccountSummary }> {
+  const email = account.email ?? "Gmail";
   try {
-    const accessToken = await accessTokenFromRefresh(opts.refreshToken);
-    const query = "newer_than:7d -category:promotions -category:social -in:spam -in:trash";
-    const list = await api<{ messages?: Array<{ id?: string }> }>(
-      `/messages?maxResults=20&q=${encodeURIComponent(query)}`,
-      accessToken,
-      fetchImpl,
-    );
+    const accessToken = await accessTokenFromRefresh(account.refreshToken);
+    const [list, inbox] = await Promise.all([
+      api<{ messages?: Array<{ id?: string }> }>(
+        `/messages?maxResults=${PER_ACCOUNT}&q=${encodeURIComponent(INBOX_QUERY)}`,
+        accessToken,
+        fetchImpl,
+      ),
+      api<{ threadsUnread?: number }>("/labels/INBOX", accessToken, fetchImpl).catch(() => null),
+    ]);
     const ids = (list.messages ?? []).map((m) => m.id).filter((id): id is string => Boolean(id));
     const messages = await Promise.all(
       ids.map((id) =>
@@ -142,20 +159,58 @@ export async function fetchGmail(
       ),
     );
     return {
-      configured: true,
-      connected: true,
-      ok: true,
-      items: normalizeGmailMessages(messages.filter(Boolean)).sort((a, b) =>
-        b.at.localeCompare(a.at),
-      ),
+      items: normalizeGmailMessages(messages.filter(Boolean), account.email),
+      summary: { email, ok: true, unread: inbox?.threadsUnread },
     };
   } catch (error) {
     return {
-      configured: true,
-      connected: true,
-      ok: false,
       items: [],
-      error: error instanceof Error ? error.message : "Gmail request failed",
+      summary: {
+        email,
+        ok: false,
+        error: error instanceof Error ? error.message : "Gmail request failed",
+      },
     };
   }
+}
+
+export async function fetchGmail(
+  opts: { accounts: GmailAccountInput[] },
+  fetchImpl: typeof fetch = fetch,
+): Promise<GmailResult> {
+  if (!googleConfigured()) {
+    return {
+      configured: false,
+      connected: false,
+      ok: false,
+      items: [],
+      accounts: [],
+      error: "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are not set on the server.",
+    };
+  }
+  const withMail = opts.accounts.filter((a) => a.grantedScope.split(" ").includes(GMAIL_SCOPE));
+  if (withMail.length === 0) {
+    return {
+      configured: true,
+      connected: false,
+      ok: false,
+      items: [],
+      accounts: [],
+      error: "Gmail is not connected yet. Use Connect Gmail on the Integrations page.",
+    };
+  }
+
+  const results = await Promise.all(withMail.map((a) => fetchOne(a, fetchImpl)));
+  const failed = results.filter((r) => !r.summary.ok);
+  return {
+    configured: true,
+    connected: true,
+    // One mailbox failing must not hide the others.
+    ok: failed.length < results.length,
+    items: results.flatMap((r) => r.items).sort((a, b) => b.at.localeCompare(a.at)),
+    accounts: results.map((r) => r.summary),
+    ...(failed.length > 0
+      ? { error: failed.map((r) => `${r.summary.email}: ${r.summary.error}`).join(" · ") }
+      : {}),
+  };
 }

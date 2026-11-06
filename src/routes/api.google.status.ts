@@ -2,12 +2,21 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { GMAIL_SCOPE } from "@/server/providers/gmail";
 import { GOOGLE_SCOPES, googleConfigured } from "@/server/providers/google";
-import { clearGoogleSession, encryptionReady, readGoogleSession } from "@/server/google-session";
+import {
+  MAX_GOOGLE_ACCOUNTS,
+  encryptionReady,
+  mainAccount,
+  readGoogleAccounts,
+  removeGoogleAccount,
+  type GoogleAccount,
+} from "@/server/google-session";
 
 /**
  * Connection state, and disconnect.
  *
- * Only booleans and the account email are returned — never the refresh token.
+ * Only booleans and account addresses are returned — never a refresh token.
+ * The top-level fields describe the main account (the one Calendar and
+ * Classroom read from); `accounts` lists every connected one.
  *
  * `missingScopes` matters more than it looks: a token granted before a new
  * scope was added keeps working for everything it already covered, and fails
@@ -17,28 +26,39 @@ import { clearGoogleSession, encryptionReady, readGoogleSession } from "@/server
 export const Route = createFileRoute("/api/google/status")({
   server: {
     handlers: {
-      GET: async () => {
-        const session = await readGoogleSession();
-        const granted = session.scope ? session.scope.split(" ").filter(Boolean) : [];
-        const connected = Boolean(session.refreshToken);
-        return json({
-          configured: googleConfigured(),
-          encryptionReady: encryptionReady(),
-          connected,
-          email: session.email ?? null,
-          connectedAt: session.connectedAt ?? null,
-          scopes: granted,
-          missingScopes: connected ? missingScopes(granted) : [],
-          gmail: connected && granted.includes(GMAIL_SCOPE),
-        });
-      },
-      DELETE: async () => {
-        await clearGoogleSession();
-        return json({ ok: true, connected: false });
+      GET: async () => json(await status(await readGoogleAccounts())),
+      /** `?email=` disconnects one account; without it, every account. */
+      DELETE: async ({ request }) => {
+        const email = new URL(request.url).searchParams.get("email") ?? undefined;
+        return json(await status(await removeGoogleAccount(email)));
       },
     },
   },
 });
+
+async function status(accounts: GoogleAccount[]) {
+  const main = mainAccount(accounts);
+  const granted = main ? main.scope.split(" ").filter(Boolean) : [];
+  const connected = Boolean(main);
+  return {
+    configured: googleConfigured(),
+    encryptionReady: encryptionReady(),
+    connected,
+    email: main?.email ?? null,
+    connectedAt: main?.connectedAt ?? null,
+    scopes: granted,
+    missingScopes: connected ? missingScopes(granted) : [],
+    gmail: connected && granted.includes(GMAIL_SCOPE),
+    maxAccounts: MAX_GOOGLE_ACCOUNTS,
+    accounts: accounts.map((a) => ({
+      email: a.email ?? null,
+      connectedAt: a.connectedAt ?? null,
+      main: a === main,
+      gmail: a.scope.split(" ").includes(GMAIL_SCOPE),
+      calendar: /calendar/.test(a.scope),
+    })),
+  };
+}
 
 /**
  * Which requested scopes the stored token does not actually carry.

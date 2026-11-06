@@ -1,10 +1,16 @@
 /**
- * Where the Google refresh token lives.
+ * Where the Google refresh tokens live.
  *
  * In an httpOnly, sealed cookie — AES-GCM encrypted with `TOKEN_ENCRYPTION_KEY`
  * and never readable from JavaScript. That keeps the only long-lived Google
- * secret off the client and out of any database, which matters because the
+ * secrets off the client and out of any database, which matters because the
  * default deployment has no database at all.
+ *
+ * Several accounts fit: a personal Gmail, a second one, a school account.
+ * The first account that granted Calendar and Classroom is the main one and
+ * they read from it; every account with the Gmail permission feeds the email
+ * view. Scopes are stored without Google's long URL prefix so five accounts
+ * stay well inside a browser's 4 KB cookie limit.
  *
  * The sealing is done here rather than by the framework: TanStack Start
  * dropped its h3-backed `useSession` helpers, and a cookie this app encrypts
@@ -17,14 +23,25 @@ import { deleteCookie, getCookie, setCookie } from "@tanstack/react-start/server
 
 import { decryptSecret, encryptSecret, serverEnv } from "./env";
 
-export interface GoogleSessionData {
-  refreshToken?: string | undefined;
+export interface GoogleAccount {
+  refreshToken: string;
   email?: string | undefined;
-  scope?: string | undefined;
+  /** Space-separated, full scope URLs. */
+  scope: string;
   connectedAt?: string | undefined;
-  /** Anti-CSRF value for the in-flight consent round trip. */
-  oauthState?: string | undefined;
 }
+
+/** What the cookie holds. The single-account fields are the old format, still read. */
+export interface SealedGoogle {
+  accounts?: Array<{ t: string; e?: string; s?: string; c?: string }>;
+  oauthState?: string;
+  refreshToken?: string;
+  email?: string;
+  scope?: string;
+  connectedAt?: string;
+}
+
+export const MAX_GOOGLE_ACCOUNTS = 5;
 
 export class EncryptionKeyMissingError extends Error {
   constructor() {
@@ -48,6 +65,25 @@ const COOKIE_OPTIONS = {
   maxAge: MAX_AGE,
 };
 
+const SCOPE_PREFIX = "https://www.googleapis.com/auth/";
+
+/** "https://www.googleapis.com/auth/gmail.readonly" → "gmail.readonly"; "openid" → "=openid". */
+export function packScopes(scope: string): string {
+  return scope
+    .split(" ")
+    .filter(Boolean)
+    .map((s) => (s.startsWith(SCOPE_PREFIX) ? s.slice(SCOPE_PREFIX.length) : `=${s}`))
+    .join(" ");
+}
+
+export function unpackScopes(packed: string): string {
+  return packed
+    .split(" ")
+    .filter(Boolean)
+    .map((s) => (s.startsWith("=") ? s.slice(1) : `${SCOPE_PREFIX}${s}`))
+    .join(" ");
+}
+
 export function encryptionReady(): boolean {
   const key = serverEnv.tokenEncryptionKey;
   return Boolean(key && key.length >= 32);
@@ -57,13 +93,13 @@ function requireKey(): void {
   if (!encryptionReady()) throw new EncryptionKeyMissingError();
 }
 
-export async function readGoogleSession(): Promise<GoogleSessionData> {
+async function readSealed(): Promise<SealedGoogle> {
   if (!encryptionReady()) return {};
   try {
     const sealed = getCookie(COOKIE) ?? getCookie(LEGACY_COOKIE);
     if (!sealed) return {};
     const parsed = JSON.parse(await decryptSecret(sealed)) as unknown;
-    return parsed && typeof parsed === "object" ? (parsed as GoogleSessionData) : {};
+    return parsed && typeof parsed === "object" ? (parsed as SealedGoogle) : {};
   } catch {
     // A key rotation, a cookie from the old framework format, or tampering:
     // every one of these reads as "not connected".
@@ -71,19 +107,109 @@ export async function readGoogleSession(): Promise<GoogleSessionData> {
   }
 }
 
-export async function writeGoogleSession(patch: GoogleSessionData): Promise<void> {
+async function writeSealed(next: SealedGoogle): Promise<void> {
   requireKey();
-  const current = await readGoogleSession();
-  const next: GoogleSessionData = { ...current, ...patch };
-  // `undefined` in a patch means "remove"; JSON would drop it anyway, but be explicit.
-  for (const key of Object.keys(next) as Array<keyof GoogleSessionData>) {
-    if (next[key] === undefined) delete next[key];
-  }
   setCookie(COOKIE, await encryptSecret(JSON.stringify(next)), COOKIE_OPTIONS);
   if (getCookie(LEGACY_COOKIE)) deleteCookie(LEGACY_COOKIE, { path: "/" });
 }
 
-export async function clearGoogleSession(): Promise<void> {
+function clearCookies(): void {
   deleteCookie(COOKIE, { path: "/" });
   deleteCookie(LEGACY_COOKIE, { path: "/" });
+}
+
+/** Every connected account, in the order connected. Reads the old one-account format too. */
+export function accountsFrom(sealed: SealedGoogle): GoogleAccount[] {
+  if (Array.isArray(sealed.accounts)) {
+    return sealed.accounts
+      .filter((a) => typeof a?.t === "string" && a.t.length > 0)
+      .map((a) => ({
+        refreshToken: a.t,
+        email: a.e,
+        scope: unpackScopes(a.s ?? ""),
+        connectedAt: a.c,
+      }));
+  }
+  if (sealed.refreshToken) {
+    return [
+      {
+        refreshToken: sealed.refreshToken,
+        email: sealed.email,
+        scope: sealed.scope ?? "",
+        connectedAt: sealed.connectedAt,
+      },
+    ];
+  }
+  return [];
+}
+
+export function toSealed(accounts: GoogleAccount[], oauthState?: string): SealedGoogle {
+  return {
+    accounts: accounts.map((a) => ({
+      t: a.refreshToken,
+      ...(a.email ? { e: a.email } : {}),
+      s: packScopes(a.scope),
+      ...(a.connectedAt ? { c: a.connectedAt } : {}),
+    })),
+    ...(oauthState ? { oauthState } : {}),
+  };
+}
+
+export async function readGoogleAccounts(): Promise<GoogleAccount[]> {
+  return accountsFrom(await readSealed());
+}
+
+/** The account Calendar and Classroom read from: the first one that granted them. */
+export function mainAccount(accounts: GoogleAccount[]): GoogleAccount | undefined {
+  return accounts.find((a) => /calendar|classroom/.test(a.scope)) ?? accounts[0];
+}
+
+export async function readOauthState(): Promise<string | undefined> {
+  return (await readSealed()).oauthState;
+}
+
+/** Remembers the anti-forgery value for the consent round trip that is starting. */
+export async function writeOauthState(state: string): Promise<void> {
+  await writeSealed(toSealed(accountsFrom(await readSealed()), state));
+}
+
+/**
+ * Adds an account, or refreshes one already connected at that address: the
+ * new token replaces the old one and the permissions are merged, so granting
+ * Gmail later never drops Calendar. Past the limit the newest is refused.
+ */
+export function mergeAccount(accounts: GoogleAccount[], incoming: GoogleAccount): GoogleAccount[] {
+  const key = incoming.email?.toLowerCase();
+  const index = key ? accounts.findIndex((a) => a.email?.toLowerCase() === key) : -1;
+  if (index === -1) return [...accounts, incoming].slice(0, MAX_GOOGLE_ACCOUNTS);
+  const existing = accounts[index];
+  const scopes = new Set(
+    [...(existing?.scope ?? "").split(" "), ...incoming.scope.split(" ")].filter(Boolean),
+  );
+  const merged: GoogleAccount = {
+    ...incoming,
+    scope: [...scopes].join(" "),
+    connectedAt: existing?.connectedAt ?? incoming.connectedAt,
+  };
+  return accounts.map((a, i) => (i === index ? merged : a));
+}
+
+/** Saves an account and ends the consent round trip. */
+export async function saveGoogleAccount(incoming: GoogleAccount): Promise<GoogleAccount[]> {
+  const next = mergeAccount(accountsFrom(await readSealed()), incoming);
+  await writeSealed(toSealed(next));
+  return next;
+}
+
+/** Removes one account by address, or every account when none is given. */
+export async function removeGoogleAccount(email?: string): Promise<GoogleAccount[]> {
+  if (!email) {
+    clearCookies();
+    return [];
+  }
+  const key = email.toLowerCase();
+  const next = accountsFrom(await readSealed()).filter((a) => a.email?.toLowerCase() !== key);
+  if (next.length === 0) clearCookies();
+  else await writeSealed(toSealed(next));
+  return next;
 }

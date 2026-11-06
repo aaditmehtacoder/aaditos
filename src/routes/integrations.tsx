@@ -1,6 +1,7 @@
 import { createFileRoute, useSearch } from "@tanstack/react-router";
-import { Check, ExternalLink, Link2, Loader2, RefreshCw } from "lucide-react";
-import { useEffect, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Check, ExternalLink, Link2, Loader2, Mail, Plus, RefreshCw, X } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { Panel, Pill } from "@/components/os/primitives";
@@ -12,20 +13,30 @@ import type { IntegrationRecord } from "@/lib/core/types";
 import {
   ALL_SYNCABLE,
   PROVIDER_INTEGRATION_IDS,
+  type GoogleStatus,
+  type InboxItem,
   type ProviderCapabilities,
   type SyncProvider,
 } from "@/lib/integrations/contracts";
-import { useGoogleStatus, useProviderConfig, useSync } from "@/lib/integrations/use-integrations";
+import {
+  INBOX_KEY,
+  useGoogleStatus,
+  useProviderConfig,
+  useSync,
+} from "@/lib/integrations/use-integrations";
 import { useOS } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/integrations")({
   head: () => ({ meta: [{ title: "Integrations" }] }),
   // Optional keys, so a plain <Link to="/integrations"> needs no search prop.
-  validateSearch: (search: Record<string, unknown>): { google?: string; message?: string } => {
-    const out: { google?: string; message?: string } = {};
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { google?: string; message?: string; email?: string } => {
+    const out: { google?: string; message?: string; email?: string } = {};
     if (typeof search["google"] === "string") out.google = search["google"];
     if (typeof search["message"] === "string") out.message = search["message"];
+    if (typeof search["email"] === "string") out.email = search["email"];
     return out;
   },
   component: IntegrationsPage,
@@ -47,6 +58,8 @@ interface Card {
   action?: ReactNode;
   /** Shown under "Set up": which variable to add and where to get it. */
   setup?: { env: string; where: string; url: string } | undefined;
+  /** Anything more the card needs, such as a list of connected accounts. */
+  extra?: ReactNode;
 }
 
 const TONE: Record<State, "success" | "neutral" | "warning" | "urgent" | "primary"> = {
@@ -97,6 +110,7 @@ function IntegrationCard({ card }: { card: Card }) {
           <p className="mt-0.5 text-[12px] text-muted-foreground">{card.what}</p>
         </div>
       </div>
+      {card.extra ? <div className="mt-3 px-4">{card.extra}</div> : null}
       <div className="mt-3 flex items-end justify-between gap-3 px-4 pb-4">
         <p
           className={cn(
@@ -140,6 +154,89 @@ function ConnectLink({ href, label }: { href: string; label: string }) {
   );
 }
 
+/**
+ * Every connected mailbox, each removable on its own, and a way to add
+ * another. Google asks which account every time, so "Add an email" is how a
+ * second personal account or a school account gets in.
+ */
+function MailAccounts({
+  accounts,
+  max,
+  onRemoved,
+}: {
+  accounts: GoogleStatus["accounts"];
+  max: number;
+  onRemoved: (email: string) => void;
+}) {
+  const [removing, setRemoving] = useState<string | null>(null);
+  const mail = accounts.filter((a) => a.gmail && a.email);
+
+  async function remove(email: string) {
+    setRemoving(email);
+    try {
+      const response = await fetch(
+        withBase(`api/google/status?email=${encodeURIComponent(email)}`),
+        { method: "DELETE" },
+      );
+      if (!response.ok) throw new Error(`Could not disconnect (${response.status})`);
+      onRemoved(email);
+      toast.success("Disconnected", { description: email });
+    } catch (error) {
+      toast.error("Could not disconnect", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      setRemoving(null);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      {mail.length > 0 ? (
+        <ul className="divide-y divide-border rounded-[10px] border border-border">
+          {mail.map((account) => (
+            <li key={account.email} className="flex items-center gap-2 px-3 py-2 text-[12.5px]">
+              <Mail className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+              <span className="min-w-0 flex-1 truncate">{account.email}</span>
+              {account.main ? (
+                <span className="shrink-0 text-[11px] text-muted-foreground">
+                  Calendar & Classroom too
+                </span>
+              ) : null}
+              <button
+                type="button"
+                aria-label={`Disconnect ${account.email}`}
+                title="Disconnect"
+                disabled={removing !== null}
+                onClick={() => void remove(account.email ?? "")}
+                className="grid size-6 shrink-0 place-items-center rounded-[6px] text-muted-foreground transition-colors hover:bg-secondary hover:text-urgent disabled:opacity-50"
+              >
+                {removing === account.email ? (
+                  <Loader2 className="size-3 animate-spin" aria-hidden />
+                ) : (
+                  <X className="size-3.5" aria-hidden />
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {accounts.length < max ? (
+        <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[12.5px]" asChild>
+          <a href={withBase("api/google/auth?add=mail")}>
+            <Plus className="size-3.5" aria-hidden />
+            {mail.length === 0 ? "Connect an email" : "Add another email"}
+          </a>
+        </Button>
+      ) : (
+        <p className="text-[11.5px] text-muted-foreground">
+          {max} accounts is the most this can hold. Remove one to add another.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function buildCards(opts: {
   config: ProviderCapabilities | undefined;
   google: {
@@ -148,10 +245,14 @@ function buildCards(opts: {
     email: string | null;
     gmail: boolean;
     missing: number;
+    accounts: GoogleStatus["accounts"];
+    maxAccounts: number;
   };
   records: Map<string, IntegrationRecord>;
+  onMailRemoved: (email: string) => void;
 }): Card[] {
   const { config, google, records } = opts;
+  const mailCount = google.accounts.filter((a) => a.gmail).length;
   const rec = (provider: SyncProvider) => records.get(PROVIDER_INTEGRATION_IDS[provider]);
   const synced = (provider: SyncProvider) => {
     const r = rec(provider);
@@ -221,25 +322,26 @@ function buildCards(opts: {
       id: "gmail",
       mark: "gmail",
       name: "Gmail",
-      what: "Recent mail that might hold a date or a deadline, filed with one click.",
+      what: "Every inbox you connect, side by side on the Email page. Read-only: nothing here can send or delete mail.",
       provider: "gmail",
       state: !google.configured
         ? "setup"
-        : !google.connected || !google.gmail
+        : mailCount === 0
           ? "connect"
           : stateFor(true, rec("gmail")),
-      status: google.gmail
-        ? (synced("gmail") ?? "Read-only. Nothing here can send or delete mail.")
-        : google.connected
-          ? "A separate, read-only permission. Asked for only when you connect it."
-          : "Connect Google Classroom first.",
-      action:
-        google.configured && google.connected ? (
-          <ConnectLink
-            href={withBase("api/google/auth?scope=gmail")}
-            label={google.gmail ? "Reconnect" : "Connect Gmail"}
-          />
-        ) : undefined,
+      status: !google.configured
+        ? undefined
+        : mailCount > 0
+          ? (synced("gmail") ??
+            `${mailCount} account${mailCount === 1 ? "" : "s"} connected. Google asks which account each time.`)
+          : "Google asks which account to use, so any Gmail or school address works.",
+      extra: google.configured ? (
+        <MailAccounts
+          accounts={google.accounts}
+          max={google.maxAccounts}
+          onRemoved={opts.onMailRemoved}
+        />
+      ) : undefined,
     },
     {
       id: "aeries",
@@ -338,11 +440,12 @@ function IntegrationsPage() {
   const google = useGoogleStatus();
   const { workspace } = useOS();
   const { sync, running } = useSync();
+  const queryClient = useQueryClient();
 
   // The Google callback lands here with the outcome in the URL.
   useEffect(() => {
     if (search.google === "connected") {
-      toast.success("Google connected");
+      toast.success("Google connected", { description: search.email });
       void google.refetch();
       void sync(["google", "gmail"]);
     } else if (search.google === "error") {
@@ -361,8 +464,16 @@ function IntegrationsPage() {
       email: google.data?.email ?? null,
       gmail: google.data?.gmail ?? false,
       missing: google.data?.missingScopes.length ?? 0,
+      accounts: google.data?.accounts ?? [],
+      maxAccounts: google.data?.maxAccounts ?? 5,
     },
     records,
+    onMailRemoved: (email) => {
+      queryClient.setQueryData<InboxItem[]>(INBOX_KEY, (prev) =>
+        (prev ?? []).filter((i) => i.account?.toLowerCase() !== email.toLowerCase()),
+      );
+      void google.refetch();
+    },
   });
 
   const on = cards.filter((c) => c.state === "on").length;
