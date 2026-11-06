@@ -79,7 +79,11 @@ export function useGoogleStatus() {
   return useQuery<GoogleStatus>({
     queryKey: ["google-status"],
     queryFn: async () => {
-      const response = await fetch(withBase("/api/google/status"));
+      // The token lets the server answer with this person's accounts from
+      // every computer, not only the ones this browser connected.
+      const response = await fetch(withBase("/api/google/status"), {
+        headers: await authHeaders(),
+      });
       if (!response.ok) throw new Error(`Google status failed (${response.status})`);
       return (await response.json()) as GoogleStatus;
     },

@@ -2,12 +2,12 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { GMAIL_SCOPE, GMAIL_SEND_SCOPE } from "@/server/providers/gmail";
 import { GOOGLE_SCOPES, googleConfigured } from "@/server/providers/google";
+import { GMAIL_MODIFY_SCOPE } from "@/server/providers/gmail-mailbox";
+import { accountsForUser, removeAccountForUser, requestUser } from "@/server/google-accounts";
 import {
   MAX_GOOGLE_ACCOUNTS,
   encryptionReady,
   mainAccount,
-  readGoogleAccounts,
-  removeGoogleAccount,
   type GoogleAccount,
 } from "@/server/google-session";
 
@@ -26,11 +26,14 @@ import {
 export const Route = createFileRoute("/api/google/status")({
   server: {
     handlers: {
-      GET: async () => json(await status(await readGoogleAccounts())),
-      /** `?email=` disconnects one account; without it, every account. */
+      // Signed in, this is the person's accounts on every computer; the
+      // browser sends its token so the Chromebook sees what the Mac connected.
+      GET: async ({ request }) =>
+        json(await status(await accountsForUser(await requestUser(request)))),
+      /** `?email=` disconnects one account; without it, every account. Everywhere, when signed in. */
       DELETE: async ({ request }) => {
         const email = new URL(request.url).searchParams.get("email") ?? undefined;
-        return json(await status(await removeGoogleAccount(email)));
+        return json(await status(await removeAccountForUser(await requestUser(request), email)));
       },
     },
   },
@@ -56,6 +59,7 @@ async function status(accounts: GoogleAccount[]) {
       main: a === main,
       gmail: a.scope.split(" ").includes(GMAIL_SCOPE),
       canReply: a.scope.split(" ").includes(GMAIL_SEND_SCOPE),
+      canModify: a.scope.split(" ").includes(GMAIL_MODIFY_SCOPE),
       calendar: /calendar/.test(a.scope),
     })),
   };

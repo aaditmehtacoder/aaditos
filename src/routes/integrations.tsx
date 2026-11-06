@@ -8,6 +8,7 @@ import { Panel, Pill } from "@/components/os/primitives";
 import { ProviderMark, type ProviderMarkId } from "@/components/os/provider-marks";
 import { Button } from "@/components/ui/button";
 import { withBase } from "@/lib/base-path";
+import { authHeaders } from "@/lib/compass/client";
 import { relativeTimeLabel } from "@/lib/core/time";
 import type { IntegrationRecord } from "@/lib/core/types";
 import {
@@ -176,7 +177,7 @@ function MailAccounts({
     try {
       const response = await fetch(
         withBase(`api/google/status?email=${encodeURIComponent(email)}`),
-        { method: "DELETE" },
+        { method: "DELETE", headers: await authHeaders() },
       );
       if (!response.ok) throw new Error(`Could not disconnect (${response.status})`);
       onRemoved(email);

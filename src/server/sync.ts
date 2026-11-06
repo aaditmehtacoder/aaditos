@@ -33,6 +33,8 @@ export type { SyncPayload, SyncProvider, SyncRunResult };
 export interface SyncOptions {
   providers: SyncProvider[];
   userId: string;
+  /** Where the Google accounts come from; this browser's cookie when not given. */
+  googleAccounts?: (() => Promise<GoogleAccount[]>) | undefined;
 }
 
 /** Retry a transient failure once with a short backoff. */
@@ -97,7 +99,9 @@ export async function runSync(opts: SyncOptions): Promise<SyncPayload> {
   // Google and Gmail share the sealed cookie; read it once. Calendar and
   // Classroom come from the main account, mail from every account.
   const googleAccounts: Promise<GoogleAccount[]> =
-    wanted.has("google") || wanted.has("gmail") ? readGoogleAccounts() : Promise.resolve([]);
+    wanted.has("google") || wanted.has("gmail")
+      ? (opts.googleAccounts ?? readGoogleAccounts)()
+      : Promise.resolve([]);
 
   if (wanted.has("google")) {
     tasks.push(

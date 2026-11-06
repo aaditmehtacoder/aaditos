@@ -186,6 +186,8 @@ export interface GoogleStatus {
     gmail: boolean;
     /** Granted gmail.send, so replies can go out from it. */
     canReply: boolean;
+    /** Granted gmail.modify: archive, star, read state, Trash. */
+    canModify: boolean;
     calendar: boolean;
   }>;
 }

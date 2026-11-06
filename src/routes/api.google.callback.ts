@@ -64,6 +64,7 @@ export const Route = createFileRoute("/api/google/callback")({
             email: tokens.email,
             scope: tokens.scope,
             connectedAt: new Date().toISOString(),
+            grantedAt: new Date().toISOString(),
           });
         } catch (error) {
           // Never log the code or any token material.

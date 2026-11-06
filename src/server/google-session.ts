@@ -29,11 +29,13 @@ export interface GoogleAccount {
   /** Space-separated, full scope URLs. */
   scope: string;
   connectedAt?: string | undefined;
+  /** When this token was last granted. Newer wins when browsers disagree. */
+  grantedAt?: string | undefined;
 }
 
 /** What the cookie holds. The single-account fields are the old format, still read. */
 export interface SealedGoogle {
-  accounts?: Array<{ t: string; e?: string; s?: string; c?: string }>;
+  accounts?: Array<{ t: string; e?: string; s?: string; c?: string; g?: string }>;
   oauthState?: string;
   refreshToken?: string;
   email?: string;
@@ -128,6 +130,7 @@ export function accountsFrom(sealed: SealedGoogle): GoogleAccount[] {
         email: a.e,
         scope: unpackScopes(a.s ?? ""),
         connectedAt: a.c,
+        grantedAt: a.g,
       }));
   }
   if (sealed.refreshToken) {
@@ -150,6 +153,7 @@ export function toSealed(accounts: GoogleAccount[], oauthState?: string): Sealed
       ...(a.email ? { e: a.email } : {}),
       s: packScopes(a.scope),
       ...(a.connectedAt ? { c: a.connectedAt } : {}),
+      ...(a.grantedAt ? { g: a.grantedAt } : {}),
     })),
     ...(oauthState ? { oauthState } : {}),
   };
@@ -195,8 +199,22 @@ export function mergeAccount(accounts: GoogleAccount[], incoming: GoogleAccount)
     ...incoming,
     scope: [...scopes].join(" "),
     connectedAt: existing?.connectedAt ?? incoming.connectedAt,
+    grantedAt: incoming.grantedAt ?? existing?.grantedAt,
   };
   return accounts.map((a, i) => (i === index ? merged : a));
+}
+
+/**
+ * Makes this browser's cookie hold exactly these accounts, keeping any
+ * consent round trip in flight. Used to mirror what is saved for the person.
+ */
+export async function writeGoogleAccounts(accounts: GoogleAccount[]): Promise<void> {
+  const sealed = await readSealed();
+  if (accounts.length === 0 && !sealed.oauthState) {
+    clearCookies();
+    return;
+  }
+  await writeSealed(toSealed(accounts, sealed.oauthState));
 }
 
 /** Saves an account and ends the consent round trip. */

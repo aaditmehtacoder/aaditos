@@ -14,7 +14,7 @@ export const Route = createFileRoute("/api/gmail/reply")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        let body: { account?: unknown; id?: unknown; text?: unknown };
+        let body: { account?: unknown; id?: unknown; text?: unknown; all?: unknown };
         try {
           body = (await request.json()) as typeof body;
         } catch {
@@ -34,8 +34,10 @@ export const Route = createFileRoute("/api/gmail/reply")({
         );
         if (!access.ok) return access.response;
         try {
-          const sent = await sendGmailReply(access.account, id, text);
-          return json({ ok: true, to: sent.to, threadId: sent.threadId });
+          const sent = await sendGmailReply(access.account, id, text, fetch, {
+            all: body.all === true,
+          });
+          return json({ ok: true, to: sent.to, cc: sent.cc, threadId: sent.threadId });
         } catch (error) {
           console.error("[gmail] reply failed", {
             message: error instanceof Error ? error.message.slice(0, 160) : "unknown",

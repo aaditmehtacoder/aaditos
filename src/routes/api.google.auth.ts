@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { withBase } from "@/lib/base-path";
 import { newId } from "@/lib/core/ids";
 import { GMAIL_SCOPE, GMAIL_SEND_SCOPE } from "@/server/providers/gmail";
+import { GMAIL_MODIFY_SCOPE } from "@/server/providers/gmail-mailbox";
 import { MAIL_ONLY_SCOPES, buildConsentUrl, googleConfigured } from "@/server/providers/google";
 import { serverEnv } from "@/server/env";
 import { encryptionReady, writeOauthState } from "@/server/google-session";
@@ -44,9 +45,12 @@ export const Route = createFileRoute("/api/google/auth")({
       GET: async ({ request }) => {
         const params = new URL(request.url).searchParams;
         const addMail = params.get("add") === "mail";
-        // Reading and replying: gmail.send can only send, nothing else.
+        // Reading, sending, and the everyday changes (archive, star, read
+        // state, Trash). gmail.modify cannot delete a message outright.
         const extra =
-          addMail || params.get("scope") === "gmail" ? [GMAIL_SCOPE, GMAIL_SEND_SCOPE] : [];
+          addMail || params.get("scope") === "gmail"
+            ? [GMAIL_SCOPE, GMAIL_SEND_SCOPE, GMAIL_MODIFY_SCOPE]
+            : [];
         // Reconnecting one known account preselects it in Google's picker.
         const hint = params.get("hint") ?? undefined;
         if (!googleConfigured()) {

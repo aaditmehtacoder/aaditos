@@ -23,12 +23,12 @@ export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 
 const API = "https://gmail.googleapis.com/gmail/v1/users/me";
 
-interface GmailHeader {
+export interface GmailHeader {
   name?: string;
   value?: string;
 }
 
-interface GmailMessage {
+export interface GmailMessage {
   id?: string;
   threadId?: string;
   snippet?: string;
@@ -92,7 +92,11 @@ export function normalizeGmailMessages(messages: unknown, account?: string): Inb
   return out;
 }
 
-async function api<T>(path: string, accessToken: string, fetchImpl: typeof fetch): Promise<T> {
+export async function api<T>(
+  path: string,
+  accessToken: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<T> {
   const response = await fetchImpl(`${API}${path}`, {
     headers: { authorization: `Bearer ${accessToken}`, accept: "application/json" },
     signal: AbortSignal.timeout(12_000),
@@ -220,7 +224,7 @@ export async function fetchGmail(
 /** Sending only: it cannot read, delete or change anything on its own. */
 export const GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send";
 
-interface GmailPart {
+export interface GmailPart {
   mimeType?: string;
   filename?: string;
   headers?: GmailHeader[];
@@ -228,7 +232,7 @@ interface GmailPart {
   parts?: GmailPart[];
 }
 
-interface FullMessage extends GmailMessage {
+export interface FullMessage extends GmailMessage {
   payload?: GmailPart & { headers?: GmailHeader[] };
 }
 
@@ -308,7 +312,7 @@ export function addressOf(value: string): string {
   return (match?.[1] ?? value).trim();
 }
 
-function allHeaders(message: FullMessage): (name: string) => string {
+export function allHeaders(message: FullMessage): (name: string) => string {
   return (name) =>
     message.payload?.headers?.find((h) => (h.name ?? "").toLowerCase() === name.toLowerCase())
       ?.value ?? "";
@@ -352,23 +356,30 @@ function encodeHeaderWord(value: string): string {
   return `=?UTF-8?B?${utf8Base64(value)}?=`;
 }
 
+/** One address per entry from a header like `"Doe, Jane" <j@x.org>, k@y.org`. */
+export function splitAddresses(header: string): string[] {
+  return (header.match(/"[^"]*"\s*<[^>]+>|[^,]+/g) ?? [])
+    .map((part) => addressOf(part))
+    .filter((address) => /^[^\s@<>]+@[^\s@<>]+$/.test(address));
+}
+
 /**
- * The raw reply, ready for `messages.send`: threaded onto the original with
- * In-Reply-To and References, "Re:" once, the original quoted underneath the
- * way mail clients do, and the body in base64 so any language goes through.
+ * A raw RFC 2822 message, ready for `messages.send`: optional Cc and Bcc,
+ * threaded onto an original with In-Reply-To and References when given, the
+ * original quoted underneath the way mail clients do, and the body in base64
+ * so any language goes through. Every header value is kept to one line.
  */
-export function buildReply(opts: {
+export function buildMessage(opts: {
   from: string;
   to: string;
+  cc?: string | undefined;
+  bcc?: string | undefined;
   subject: string;
-  messageId: string;
-  references: string;
   body: string;
+  messageId?: string | undefined;
+  references?: string | undefined;
   quote?: { date: string; from: string; text: string } | undefined;
 }): string {
-  const subject = /^re:/i.test(opts.subject.trim())
-    ? opts.subject.trim()
-    : `Re: ${opts.subject.trim()}`;
   const quoted = opts.quote
     ? `\n\nOn ${oneLine(opts.quote.date)}, ${oneLine(opts.quote.from)} wrote:\n` +
       opts.quote.text
@@ -378,11 +389,16 @@ export function buildReply(opts: {
         .join("\n")
     : "";
   const body = utf8Base64(`${opts.body.trim()}${quoted}\n`).replace(/.{76}/g, "$&\r\n");
-  const references = [opts.references, opts.messageId].map(oneLine).filter(Boolean).join(" ");
+  const references = [opts.references ?? "", opts.messageId ?? ""]
+    .map(oneLine)
+    .filter(Boolean)
+    .join(" ");
   const headers = [
     `From: ${oneLine(opts.from)}`,
     `To: ${oneLine(opts.to)}`,
-    `Subject: ${encodeHeaderWord(oneLine(subject))}`,
+    ...(opts.cc?.trim() ? [`Cc: ${oneLine(opts.cc)}`] : []),
+    ...(opts.bcc?.trim() ? [`Bcc: ${oneLine(opts.bcc)}`] : []),
+    `Subject: ${encodeHeaderWord(oneLine(opts.subject))}`,
     ...(opts.messageId ? [`In-Reply-To: ${oneLine(opts.messageId)}`] : []),
     ...(references ? [`References: ${references}`] : []),
     "MIME-Version: 1.0",
@@ -392,47 +408,39 @@ export function buildReply(opts: {
   return encodeBase64Url(`${headers.join("\r\n")}\r\n\r\n${body}`);
 }
 
-/**
- * Replies to one message from the account it arrived in. Every header comes
- * from the original as Gmail has it, not from the browser, so a reply can
- * only ever go back to whoever wrote.
- */
-export async function sendGmailReply(
-  account: { refreshToken: string; email?: string | undefined },
-  id: string,
-  body: string,
+/** A reply: the same message, with "Re:" once and the threading headers required. */
+export function buildReply(opts: {
+  from: string;
+  to: string;
+  cc?: string | undefined;
+  subject: string;
+  messageId: string;
+  references: string;
+  body: string;
+  quote?: { date: string; from: string; text: string } | undefined;
+}): string {
+  const subject = /^re:/i.test(opts.subject.trim())
+    ? opts.subject.trim()
+    : `Re: ${opts.subject.trim()}`;
+  return buildMessage({ ...opts, subject });
+}
+
+/** Hands a raw message to Gmail, optionally onto a thread. */
+export async function postMessage(
+  accessToken: string,
+  raw: string,
+  threadId: string | undefined,
   fetchImpl: typeof fetch = fetch,
-): Promise<{ id: string; threadId: string; to: string }> {
-  const accessToken = await accessTokenFromRefresh(account.refreshToken);
-  const original = await api<FullMessage>(
-    `/messages/${encodeURIComponent(id)}?format=full`,
-    accessToken,
-    fetchImpl,
-  );
-  const h = allHeaders(original);
-  const to = addressOf(h("Reply-To") || h("From"));
-  if (!to || !/@/.test(to)) throw new Error("That email has no address to reply to.");
-  const raw = buildReply({
-    from: account.email ?? "me",
-    to,
-    subject: h("Subject") || "(no subject)",
-    messageId: h("Message-ID") || h("Message-Id"),
-    references: h("References"),
-    body,
-    quote: { date: h("Date"), from: h("From"), text: messageText(original.payload) },
-  });
+): Promise<{ id: string; threadId: string }> {
   const response = await fetchImpl(`${API}/messages/send`, {
     method: "POST",
-    headers: {
-      authorization: `Bearer ${accessToken}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({ raw, threadId: original.threadId }),
+    headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+    body: JSON.stringify(threadId ? { raw, threadId } : { raw }),
     signal: AbortSignal.timeout(15_000),
   });
   if (response.status === 403) {
     throw new Error(
-      "This account has not allowed replies yet. Reconnect it from the Email page and allow sending.",
+      "This account has not allowed sending yet. Reconnect it from the Email page and allow it.",
     );
   }
   if (!response.ok) {
@@ -440,5 +448,50 @@ export async function sendGmailReply(
     throw new Error(detail.error?.message ?? `Gmail did not send it (${response.status}).`);
   }
   const sent = (await response.json()) as { id?: string; threadId?: string };
-  return { id: sent.id ?? "", threadId: sent.threadId ?? original.threadId ?? "", to };
+  return { id: sent.id ?? "", threadId: sent.threadId ?? threadId ?? "" };
+}
+
+/**
+ * Replies to one message from the account it arrived in. Every header comes
+ * from the original as Gmail has it, not from the browser, so a reply can
+ * only ever go back to the people already on the email. Reply all adds the
+ * original's To and Cc, minus the sender's own address.
+ */
+export async function sendGmailReply(
+  account: { refreshToken: string; email?: string | undefined },
+  id: string,
+  body: string,
+  fetchImpl: typeof fetch = fetch,
+  opts: { all?: boolean } = {},
+): Promise<{ id: string; threadId: string; to: string; cc: string }> {
+  const accessToken = await accessTokenFromRefresh(account.refreshToken);
+  const original = await api<FullMessage>(
+    `/messages/${encodeURIComponent(id)}?format=full`,
+    accessToken,
+    fetchImpl,
+  );
+  const h = allHeaders(original);
+  const self = (account.email ?? "").toLowerCase();
+  const fromSelf = addressOf(h("From")).toLowerCase() === self;
+  // Replying to something you sent goes to the people you sent it to.
+  const to = fromSelf ? splitAddresses(h("To")).join(", ") : addressOf(h("Reply-To") || h("From"));
+  if (!to || !/@/.test(to)) throw new Error("That email has no address to reply to.");
+  const already = new Set([self, ...splitAddresses(to).map((a) => a.toLowerCase())]);
+  const cc = opts.all
+    ? [...new Set([...splitAddresses(h("To")), ...splitAddresses(h("Cc"))])]
+        .filter((a) => !already.has(a.toLowerCase()))
+        .join(", ")
+    : "";
+  const raw = buildReply({
+    from: account.email ?? "me",
+    to,
+    cc,
+    subject: h("Subject") || "(no subject)",
+    messageId: h("Message-ID") || h("Message-Id"),
+    references: h("References"),
+    body,
+    quote: { date: h("Date"), from: h("From"), text: messageText(original.payload) },
+  });
+  const sent = await postMessage(accessToken, raw, original.threadId, fetchImpl);
+  return { ...sent, to, cc };
 }

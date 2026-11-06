@@ -8,7 +8,8 @@
  */
 
 import { bearerToken, verifySupabaseToken } from "./auth";
-import { readGoogleAccounts, type GoogleAccount } from "./google-session";
+import { accountsForUser } from "./google-accounts";
+import type { GoogleAccount } from "./google-session";
 import { checkRateLimit, callerKey } from "./rate-limit";
 
 export type MailAccess =
@@ -51,7 +52,7 @@ export async function mailAccess(
     };
   }
   const key = (email ?? "").trim().toLowerCase();
-  const account = (await readGoogleAccounts()).find((a) => a.email?.toLowerCase() === key);
+  const account = (await accountsForUser(userId)).find((a) => a.email?.toLowerCase() === key);
   if (!key || !account) {
     return {
       ok: false,

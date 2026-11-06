@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { accountsForUser, requestUser } from "@/server/google-accounts";
 import { runSync } from "@/server/sync";
 import { SyncRequestSchema } from "@/server/schemas";
 import { callerKey, checkRateLimit } from "@/server/rate-limit";
@@ -40,9 +41,13 @@ export const Route = createFileRoute("/api/sync")({
           );
         }
 
+        // A verified sign-in brings the person's Google accounts from every
+        // computer; without one, only this browser's.
+        const signedIn = await requestUser(request);
         const payload = await runSync({
           providers: parsed.data.providers,
           userId: parsed.data.userId,
+          googleAccounts: () => accountsForUser(signedIn),
         });
         return json(payload, 200, { "cache-control": "no-store" });
       },
