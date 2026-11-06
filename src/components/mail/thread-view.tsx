@@ -7,6 +7,9 @@
 
 import {
   Archive,
+  Download,
+  FileText,
+  Image as ImageIcon,
   ArrowLeft,
   CalendarPlus,
   Forward,
@@ -22,10 +25,20 @@ import {
   Trash2,
   Undo2,
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { withBase } from "@/lib/base-path";
+import { authHeaders } from "@/lib/compass/client";
 import { useCapture } from "@/lib/hooks/use-capture";
 import {
   avatarColor,
@@ -69,9 +82,32 @@ function linkLabel(url: string): string {
   }
 }
 
-function Linkified({ text }: { text: string }) {
+/** *bold* and _italic_, the way plain-text mail marks them, inside one stretch of text. */
+function emphasis(text: string, key: string): ReactNode[] {
+  const out: ReactNode[] = [];
+  // *…* may wrap onto a second line in hard-wrapped mail; _…_ needs a word boundary
+  // on both sides so snake_case and file_names are left alone.
+  const pattern = /\*([^*\n]+(?:\n[^*\n]+)?)\*|(^|[\s(])_([^_\n]+)_(?=[\s).,!?:;]|$)/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let i = 0;
+  while ((m = pattern.exec(text))) {
+    if (m[1] !== undefined) {
+      out.push(text.slice(last, m.index), <strong key={`${key}-b${i}`}>{m[1]}</strong>);
+    } else {
+      out.push(text.slice(last, m.index) + (m[2] ?? ""), <em key={`${key}-i${i}`}>{m[3]}</em>);
+    }
+    last = pattern.lastIndex;
+    i += 1;
+  }
+  out.push(text.slice(last));
+  return out;
+}
+
+/** Plain-text mail, readable: links shortened and clickable, *bold* and _italic_ honoured. */
+function RichText({ text }: { text: string }) {
   // Plain-text mail wraps links in <…>; the brackets are noise once it is a link.
-  const clean = text.replace(/<(https?:\/\/[^\s>]+)>/g, "$1");
+  const clean = text.replace(/<(https?:\/\/[^\s>]+)>/g, "$1").replace(/\n{3,}/g, "\n\n");
   return (
     <>
       {clean.split(/(https?:\/\/[^\s<>()]+)/g).map((part, i) =>
@@ -87,10 +123,140 @@ function Linkified({ text }: { text: string }) {
             {linkLabel(part)}
           </a>
         ) : (
-          part
+          <span key={i}>{emphasis(part, String(i))}</span>
         ),
       )}
     </>
+  );
+}
+
+/** Where mail clients put the history they quote; folded away until asked for. */
+const QUOTES = [
+  ".gmail_quote",
+  ".gmail_extra",
+  "blockquote[type='cite']",
+  ".yahoo_quoted",
+  ".zmail_extra",
+  ".moz-cite-prefix",
+  "#appendonsend",
+  "#divRplyFwdMsg",
+  "#divRplyFwdMsg ~ *",
+  "#Signature ~ hr ~ *",
+];
+
+/**
+ * The frame an HTML email is shown in. No scripts can run (no allow-scripts),
+ * the content policy admits only images and inline styles, nothing can be
+ * submitted, and links open in a new tab. allow-same-origin without
+ * allow-scripts only lets this page measure the frame's height.
+ */
+function frameDocument(html: string): string {
+  const hidden = `body:not(.show-quotes) :is(${QUOTES.join(",")}, .app-quote)`;
+  return `<!doctype html><html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; font-src https: data:; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<style>
+:root{color-scheme:light}
+html,body{margin:0;padding:0;background:#fff;color:#1f1f1f}
+body{font:14px/1.6 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;overflow-wrap:break-word;overflow-x:auto;-webkit-font-smoothing:antialiased}
+img{max-width:100%;height:auto}
+a{color:#1a5fd6}
+pre{white-space:pre-wrap}
+p{margin:0 0 .8em}
+blockquote{margin:0 0 0 .5em;padding-left:.9em;border-left:2px solid #dadce0;color:#5f6368}
+${hidden}{display:none!important}
+</style></head><body>${html}</body></html>`;
+}
+
+/**
+ * History quoted without a class to find it by (Zoho's "---- on … wrote ----",
+ * a bare "On … wrote:"): finds that header line by its text, then marks it
+ * and everything after it, at every level up to the body, as quoted.
+ */
+function markUnlabelledQuote(doc: Document): boolean {
+  const header = /^(-{2,}\s*on\s[\s\S]{6,300}wrote\s*-{2,}|on\s[\s\S]{6,300}wrote:)$/i;
+  const matches = [...doc.body.querySelectorAll("div, p, span, td, font")].filter((el) => {
+    const text = (el.textContent ?? "").replace(/\s+/g, " ").trim();
+    return text.length < 400 && header.test(text);
+  });
+  let hit = matches[0];
+  if (!hit) return false;
+  for (const m of matches.slice(1)) if (hit.contains(m)) hit = m;
+  let node: Element | null = hit;
+  hit.classList.add("app-quote");
+  while (node && node !== doc.body) {
+    for (let sib = node.nextElementSibling; sib; sib = sib.nextElementSibling) {
+      sib.classList.add("app-quote");
+    }
+    node = node.parentElement;
+  }
+  return true;
+}
+
+function EmailFrame({ html }: { html: string }) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  const observer = useRef<ResizeObserver | null>(null);
+  const [height, setHeight] = useState(160);
+  const [hasQuote, setHasQuote] = useState(false);
+  const [showQuote, setShowQuote] = useState(false);
+  const srcDoc = useMemo(() => frameDocument(html), [html]);
+
+  const measure = useCallback(() => {
+    const doc = frame.current?.contentDocument;
+    if (!doc?.body) return;
+    const h = Math.max(doc.documentElement.scrollHeight, doc.body.scrollHeight);
+    setHeight(Math.min(h + 2, 30_000));
+  }, []);
+
+  const onLoad = () => {
+    const doc = frame.current?.contentDocument;
+    if (!doc?.body) return;
+    setHasQuote(Boolean(doc.querySelector(QUOTES.join(","))) || markUnlabelledQuote(doc));
+    measure();
+    // Pictures and fonts arrive after load and change the height.
+    for (const ms of [200, 700, 1500, 3500]) window.setTimeout(measure, ms);
+    try {
+      observer.current?.disconnect();
+      observer.current = new ResizeObserver(measure);
+      observer.current.observe(doc.body);
+    } catch {
+      /* the timed checks above still apply */
+    }
+  };
+
+  useEffect(() => () => observer.current?.disconnect(), []);
+
+  useEffect(() => {
+    const doc = frame.current?.contentDocument;
+    doc?.body?.classList.toggle("show-quotes", showQuote);
+    measure();
+  }, [showQuote, measure]);
+
+  return (
+    <div>
+      <div className="overflow-hidden rounded-[10px] bg-white dark:p-4">
+        <iframe
+          ref={frame}
+          title="Email"
+          sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+          srcDoc={srcDoc}
+          onLoad={onLoad}
+          style={{ height }}
+          className="block w-full border-0 bg-white"
+        />
+      </div>
+      {hasQuote ? (
+        <button
+          type="button"
+          onClick={() => setShowQuote((v) => !v)}
+          aria-label={showQuote ? "Hide quoted text" : "Show quoted text"}
+          title={showQuote ? "Hide quoted text" : "Show trimmed content"}
+          className="mt-2 rounded-full bg-secondary px-2 text-[13px] leading-5 text-muted-foreground hover:bg-secondary/70"
+        >
+          •••
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -120,15 +286,129 @@ function people(header: string, self: string): string {
     .join(", ");
 }
 
+/**
+ * Types this page opens in a tab. Anything else downloads: an HTML or SVG
+ * file opened from here would run as part of this site.
+ */
+const VIEWABLE =
+  /^(application\/pdf|image\/(png|jpe?g|gif|webp|bmp|avif)|text\/plain|audio\/(mpeg|mp4|ogg|wav|webm)|video\/(mp4|webm|ogg|quicktime))$/i;
+
+function AttachmentChip({
+  account,
+  messageId,
+  threadId,
+  file,
+}: {
+  account: string;
+  messageId: string;
+  threadId: string;
+  file: ThreadMessage["attachments"][number];
+}) {
+  const [busy, setBusy] = useState(false);
+  const mime = file.mimeType.toLowerCase();
+  const viewable = VIEWABLE.test(mime);
+  const Icon =
+    mime === "application/pdf" ? FileText : mime.startsWith("image/") ? ImageIcon : Paperclip;
+
+  async function get(download: boolean) {
+    const inline = viewable && !download;
+    // Opened inside the click, so the browser does not treat it as a pop-up.
+    const tab = inline ? window.open("", "_blank") : null;
+    setBusy(true);
+    try {
+      const params = new URLSearchParams({ account, message: messageId });
+      if (file.attachmentId) params.set("attachment", file.attachmentId);
+      else if (file.partId) params.set("part", file.partId);
+      const response = await fetch(withBase(`api/gmail/attachment?${params}`), {
+        headers: await authHeaders(),
+      });
+      if (!response.ok) {
+        const detail = (await response.json().catch(() => ({}))) as {
+          code?: string;
+          message?: string;
+        };
+        if (detail.code === "too_big") {
+          const gmail = `https://mail.google.com/mail/?authuser=${encodeURIComponent(account)}#all/${threadId}`;
+          if (tab) tab.location.href = gmail;
+          else window.open(gmail, "_blank", "noopener");
+          return;
+        }
+        throw new Error(detail.message ?? `Could not open it (${response.status})`);
+      }
+      // The type is set here, from the allowlist, never taken from the sender.
+      const blob = new Blob([await response.arrayBuffer()], {
+        type: inline ? mime : "application/octet-stream",
+      });
+      const url = URL.createObjectURL(blob);
+      if (tab) {
+        tab.location.href = url;
+      } else {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = file.filename || "attachment";
+        document.body.append(a);
+        a.click();
+        a.remove();
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+    } catch (error) {
+      tab?.close();
+      toast.error("Could not open that file", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <span className="flex items-stretch overflow-hidden rounded-[10px] border border-border text-[12.5px] transition-colors hover:border-foreground/25">
+      <button
+        type="button"
+        onClick={() => void get(false)}
+        disabled={busy}
+        title={viewable ? `Open ${file.filename}` : `Download ${file.filename}`}
+        className="flex min-w-0 items-center gap-2 px-3 py-2 text-left hover:bg-secondary/60"
+      >
+        {busy ? (
+          <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />
+        ) : (
+          <Icon
+            className={cn(
+              "size-4 shrink-0",
+              mime === "application/pdf" ? "text-urgent" : "text-muted-foreground",
+            )}
+            aria-hidden
+          />
+        )}
+        <span className="max-w-56 truncate">{file.filename}</span>
+        <span className="shrink-0 text-muted-foreground">{formatSize(file.size)}</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => void get(true)}
+        disabled={busy}
+        aria-label={`Download ${file.filename}`}
+        title="Download"
+        className="grid w-9 shrink-0 place-items-center border-l border-border text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+      >
+        <Download className="size-3.5" aria-hidden />
+      </button>
+    </span>
+  );
+}
+
 function MessageItem({
   message,
   account,
+  threadId,
   open,
   onToggle,
   onReply,
 }: {
   message: ThreadMessage;
   account: string;
+  threadId: string;
   open: boolean;
   onToggle: () => void;
   onReply: () => void;
@@ -191,41 +471,47 @@ function MessageItem({
           </p>
         </div>
       </div>
-      <div className="mt-3 whitespace-pre-wrap break-words pl-0 text-[14px] leading-relaxed md:pl-[52px]">
-        {fresh ? (
-          <Linkified text={fresh} />
-        ) : (
-          <span className="text-muted-foreground">(No text)</span>
-        )}
-        {quoted ? (
-          <div className="mt-2">
-            <button
-              type="button"
-              onClick={() => setShowQuoted((v) => !v)}
-              aria-label={showQuoted ? "Hide quoted text" : "Show quoted text"}
-              title={showQuoted ? "Hide quoted text" : "Show trimmed content"}
-              className="rounded-full bg-secondary px-2 text-[13px] leading-5 text-muted-foreground hover:bg-secondary/70"
-            >
-              •••
-            </button>
-            {showQuoted ? (
-              <div className="mt-2 border-l-2 border-border pl-3 text-muted-foreground">
-                <Linkified text={quoted} />
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
+      {message.html ? (
+        <div className="mt-3 md:pl-[52px]">
+          <EmailFrame html={message.html} />
+        </div>
+      ) : (
+        <div className="mt-3 max-w-[72ch] whitespace-pre-wrap break-words text-[14px] leading-[1.65] md:pl-[52px]">
+          {fresh ? (
+            <RichText text={fresh} />
+          ) : (
+            <span className="text-muted-foreground">(No text)</span>
+          )}
+          {quoted ? (
+            <div className="mt-2">
+              <button
+                type="button"
+                onClick={() => setShowQuoted((v) => !v)}
+                aria-label={showQuoted ? "Hide quoted text" : "Show quoted text"}
+                title={showQuoted ? "Hide quoted text" : "Show trimmed content"}
+                className="rounded-full bg-secondary px-2 text-[13px] leading-5 text-muted-foreground hover:bg-secondary/70"
+              >
+                •••
+              </button>
+              {showQuoted ? (
+                <div className="mt-2 border-l-2 border-border pl-3 text-muted-foreground">
+                  <RichText text={quoted} />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      )}
       {message.attachments.length > 0 ? (
         <ul className="mt-3 flex flex-wrap gap-2 md:pl-[52px]" aria-label="Attachments">
           {message.attachments.map((a, i) => (
-            <li
-              key={`${a.filename}-${i}`}
-              className="flex items-center gap-2 rounded-[10px] border border-border px-3 py-2 text-[12.5px]"
-            >
-              <Paperclip className="size-3.5 text-muted-foreground" aria-hidden />
-              <span className="max-w-56 truncate">{a.filename}</span>
-              <span className="text-muted-foreground">{formatSize(a.size)}</span>
+            <li key={`${a.filename}-${i}`}>
+              <AttachmentChip
+                account={account}
+                messageId={message.id}
+                threadId={threadId}
+                file={a}
+              />
             </li>
           ))}
         </ul>
@@ -536,6 +822,7 @@ export function ThreadPane({
                   key={message.id}
                   message={message}
                   account={thread.account}
+                  threadId={thread.id}
                   open={open}
                   onToggle={() =>
                     setOpened((prev) => {

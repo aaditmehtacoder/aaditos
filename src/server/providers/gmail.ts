@@ -225,10 +225,11 @@ export async function fetchGmail(
 export const GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send";
 
 export interface GmailPart {
+  partId?: string;
   mimeType?: string;
   filename?: string;
   headers?: GmailHeader[];
-  body?: { data?: string; size?: number };
+  body?: { data?: string; size?: number; attachmentId?: string };
   parts?: GmailPart[];
 }
 
@@ -271,22 +272,26 @@ function encodeBase64Url(text: string): string {
 
 /** Readable text from an HTML email: structure kept as line breaks, everything else dropped. */
 export function htmlToText(html: string): string {
-  return html
-    .replace(/<(script|style|head)[\s\S]*?<\/\1>/gi, "")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|tr|li|h[1-6]|blockquote)>/gi, "\n")
-    .replace(/<li[^>]*>/gi, "• ")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_, n: string) => String.fromCharCode(Number(n)))
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  return (
+    html
+      .replace(/<(script|style|head)[\s\S]*?<\/\1>/gi, "")
+      // "<div>line<br></div>" is one line, not two.
+      .replace(/<br\s*\/?>\s*(<\/(div|p)>)/gi, "$1")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/(p|div|tr|li|h[1-6]|blockquote)>/gi, "\n")
+      .replace(/<li[^>]*>/gi, "• ")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;|&apos;/g, "'")
+      .replace(/&#(\d+);/g, (_, n: string) => String.fromCharCode(Number(n)))
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+  );
 }
 
 /** The best plain-text body in a MIME tree: text/plain first, then HTML turned into text. */
@@ -304,6 +309,53 @@ export function messageText(part: GmailPart | undefined): string {
   if (plain) return plain.replace(/\r\n/g, "\n").trim();
   const html = find(part, "text/html");
   return html ? htmlToText(html) : "";
+}
+
+/**
+ * An email's HTML, made safe to show.
+ *
+ * This is the second of two locks: the page shows it in a sandboxed frame
+ * with no scripts and a content policy that blocks everything but images and
+ * inline styles. Here, anything that could run or reach out goes anyway —
+ * scripts, event handlers, javascript: links, frames, forms, meta refreshes,
+ * base tags — links get rel="noopener noreferrer" (first attribute wins), and
+ * cid: images (inline attachments this does not fetch) are dropped.
+ */
+export function sanitizeEmailHtml(html: string): string {
+  return html
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(
+      /<(script|iframe|object|embed|applet|frameset|frame|noscript|template)\b[\s\S]*?<\/\1\s*>/gi,
+      "",
+    )
+    .replace(
+      /<\/?(script|iframe|object|embed|applet|frameset|frame|form|input|button|textarea|select|option|link|meta|base|noscript|template|portal)\b[^>]*>/gi,
+      "",
+    )
+    .replace(/\s(on[a-z]+|formaction|srcdoc|xmlns:xlink)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(
+      /\s(href|src|background|action|poster|xlink:href)\s*=\s*("|')?\s*(javascript|vbscript|data:text\/html|livescript)[^"'\s>]*\2?/gi,
+      "",
+    )
+    .replace(/<img\b[^>]*\ssrc\s*=\s*("|')?cid:[^>]*>/gi, "")
+    .replace(/<a\s/gi, '<a rel="noopener noreferrer" target="_blank" ');
+}
+
+/** The HTML body of a message, sanitized, or "" when it has none (or it is too big to be worth it). */
+export function messageHtml(part: GmailPart | undefined): string {
+  if (!part) return "";
+  const find = (p: GmailPart): string | null => {
+    if (p.mimeType === "text/html" && p.body?.data && !p.filename)
+      return decodeBase64Url(p.body.data);
+    for (const child of p.parts ?? []) {
+      const found = find(child);
+      if (found) return found;
+    }
+    return null;
+  };
+  const html = find(part);
+  if (!html || html.length > 800_000) return "";
+  return sanitizeEmailHtml(html);
 }
 
 /** "Jane <jane@x.org>" → "jane@x.org". */

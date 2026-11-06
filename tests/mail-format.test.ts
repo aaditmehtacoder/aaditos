@@ -19,6 +19,14 @@ describe("splitQuoted", () => {
     expect(quoted.startsWith("On Tue")).toBe(true);
   });
 
+  it("folds Zoho's '---- on … wrote ----' history", () => {
+    const { fresh, quoted } = splitQuoted(
+      'Cheers,\nRevathi\n\n---- on Wed, 04 Nov 2026 22:01:30 +0530 "Team" <mailto:t@x.com> wrote ----\n\nHi team',
+    );
+    expect(fresh).toBe("Cheers,\nRevathi");
+    expect(quoted).toMatch(/^---- on Wed/);
+  });
+
   it("leaves a message with no history alone", () => {
     expect(splitQuoted("Just this.")).toEqual({ fresh: "Just this.", quoted: "" });
   });

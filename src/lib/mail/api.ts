@@ -57,10 +57,18 @@ export interface ThreadMessage {
   cc: string;
   date: string;
   text: string;
+  /** Sanitized HTML, shown in a sandboxed frame; empty for plain-text mail. */
+  html: string;
   snippet: string;
   unread: boolean;
   starred: boolean;
-  attachments: Array<{ filename: string; size: number }>;
+  attachments: Array<{
+    filename: string;
+    size: number;
+    mimeType: string;
+    attachmentId?: string;
+    partId?: string;
+  }>;
 }
 
 export interface ThreadView {
@@ -248,6 +256,7 @@ export function splitQuoted(text: string): { fresh: string; quoted: string } {
       // Hard-wrapped mail splits the header over two lines.
       (/^On\s/.test(line.trim()) && /wrote:\s*$/.test(`${line} ${lines[i + 1] ?? ""}`.trim())) ||
       /^-{2,}\s*(Original|Forwarded) Message\s*-{2,}/i.test(line.trim()) ||
+      /^-{2,}\s*on\s.+wrote\s*-{2,}$/i.test(line.trim()) ||
       (line.startsWith(">") && lines.slice(i).every((l) => l.startsWith(">") || !l.trim())),
   );
   if (at <= 0) return { fresh: text, quoted: "" };

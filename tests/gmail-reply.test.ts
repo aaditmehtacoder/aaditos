@@ -93,3 +93,48 @@ describe("reading a message", () => {
     expect(addressOf("bare@x.org")).toBe("bare@x.org");
   });
 });
+
+describe("showing HTML mail safely", () => {
+  it("strips everything that could run or reach out, and keeps the formatting", async () => {
+    const { sanitizeEmailHtml } = await import("@/server/providers/gmail");
+    const dirty = [
+      '<p style="color:red"><b>Bold</b> and <i>italic</i></p>',
+      "<script>alert(1)</script>",
+      '<img src="x" onerror="alert(1)">',
+      '<a href="javascript:alert(1)">bad</a>',
+      '<a href="https://ok.example">ok</a>',
+      '<iframe src="https://evil.example"></iframe>',
+      '<form action="https://evil.example"><input name="pw"></form>',
+      '<meta http-equiv="refresh" content="0;url=https://evil.example">',
+      '<base href="https://evil.example/">',
+      '<img src="cid:logo123">',
+      "<!-- <script>hidden()</script> -->",
+    ].join("");
+    const clean = sanitizeEmailHtml(dirty);
+    expect(clean).toContain("<b>Bold</b>");
+    expect(clean).toContain("<i>italic</i>");
+    expect(clean).toContain('style="color:red"');
+    expect(clean).not.toMatch(/<script|onerror|javascript:|<iframe|<form|<input|<meta|<base|cid:/i);
+    expect(clean).toContain(
+      '<a rel="noopener noreferrer" target="_blank" href="https://ok.example"',
+    );
+  });
+
+  it("finds the HTML part of a message, sanitized", async () => {
+    const { messageHtml } = await import("@/server/providers/gmail");
+    expect(
+      messageHtml({
+        mimeType: "multipart/alternative",
+        parts: [
+          { mimeType: "text/plain", body: { data: b64url("*Bold*") } },
+          { mimeType: "text/html", body: { data: b64url("<b>Bold</b><script>x()</script>") } },
+        ],
+      }),
+    ).toBe("<b>Bold</b>");
+    expect(messageHtml({ mimeType: "text/plain", body: { data: b64url("only text") } })).toBe("");
+  });
+
+  it("turns one-line-per-div HTML into single-spaced text, not double", () => {
+    expect(htmlToText("<div>Cheers,<br></div><div>Revathi<br></div>")).toBe("Cheers,\nRevathi");
+  });
+});

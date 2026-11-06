@@ -25,6 +25,7 @@ import { Route as ClassesIndexRouteImport } from './routes/classes.index'
 import { Route as ClassesCourseIdRouteImport } from './routes/classes.$courseId'
 import { Route as ApiAuthPasscodeRouteImport } from './routes/api.auth.passcode'
 import { Route as ApiCronSyncRouteImport } from './routes/api.cron.sync'
+import { Route as ApiGmailAttachmentRouteImport } from './routes/api.gmail.attachment'
 import { Route as ApiGmailCountsRouteImport } from './routes/api.gmail.counts'
 import { Route as ApiGmailDraftRouteImport } from './routes/api.gmail.draft'
 import { Route as ApiGmailListRouteImport } from './routes/api.gmail.list'
@@ -117,6 +118,11 @@ const ApiCronSyncRoute = ApiCronSyncRouteImport.update({
   path: '/api/cron/sync',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiGmailAttachmentRoute = ApiGmailAttachmentRouteImport.update({
+  id: '/api/gmail/attachment',
+  path: '/api/gmail/attachment',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiGmailCountsRoute = ApiGmailCountsRouteImport.update({
   id: '/api/gmail/counts',
   path: '/api/gmail/counts',
@@ -190,6 +196,7 @@ export interface FileRoutesByFullPath {
   '/classes/': typeof ClassesIndexRoute
   '/api/auth/passcode': typeof ApiAuthPasscodeRoute
   '/api/cron/sync': typeof ApiCronSyncRoute
+  '/api/gmail/attachment': typeof ApiGmailAttachmentRoute
   '/api/gmail/counts': typeof ApiGmailCountsRoute
   '/api/gmail/draft': typeof ApiGmailDraftRoute
   '/api/gmail/list': typeof ApiGmailListRoute
@@ -219,6 +226,7 @@ export interface FileRoutesByTo {
   '/classes': typeof ClassesIndexRoute
   '/api/auth/passcode': typeof ApiAuthPasscodeRoute
   '/api/cron/sync': typeof ApiCronSyncRoute
+  '/api/gmail/attachment': typeof ApiGmailAttachmentRoute
   '/api/gmail/counts': typeof ApiGmailCountsRoute
   '/api/gmail/draft': typeof ApiGmailDraftRoute
   '/api/gmail/list': typeof ApiGmailListRoute
@@ -249,6 +257,7 @@ export interface FileRoutesById {
   '/classes/': typeof ClassesIndexRoute
   '/api/auth/passcode': typeof ApiAuthPasscodeRoute
   '/api/cron/sync': typeof ApiCronSyncRoute
+  '/api/gmail/attachment': typeof ApiGmailAttachmentRoute
   '/api/gmail/counts': typeof ApiGmailCountsRoute
   '/api/gmail/draft': typeof ApiGmailDraftRoute
   '/api/gmail/list': typeof ApiGmailListRoute
@@ -280,6 +289,7 @@ export interface FileRouteTypes {
     | '/classes/'
     | '/api/auth/passcode'
     | '/api/cron/sync'
+    | '/api/gmail/attachment'
     | '/api/gmail/counts'
     | '/api/gmail/draft'
     | '/api/gmail/list'
@@ -309,6 +319,7 @@ export interface FileRouteTypes {
     | '/classes'
     | '/api/auth/passcode'
     | '/api/cron/sync'
+    | '/api/gmail/attachment'
     | '/api/gmail/counts'
     | '/api/gmail/draft'
     | '/api/gmail/list'
@@ -338,6 +349,7 @@ export interface FileRouteTypes {
     | '/classes/'
     | '/api/auth/passcode'
     | '/api/cron/sync'
+    | '/api/gmail/attachment'
     | '/api/gmail/counts'
     | '/api/gmail/draft'
     | '/api/gmail/list'
@@ -368,6 +380,7 @@ export interface RootRouteChildren {
   ClassesIndexRoute: typeof ClassesIndexRoute
   ApiAuthPasscodeRoute: typeof ApiAuthPasscodeRoute
   ApiCronSyncRoute: typeof ApiCronSyncRoute
+  ApiGmailAttachmentRoute: typeof ApiGmailAttachmentRoute
   ApiGmailCountsRoute: typeof ApiGmailCountsRoute
   ApiGmailDraftRoute: typeof ApiGmailDraftRoute
   ApiGmailListRoute: typeof ApiGmailListRoute
@@ -495,6 +508,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCronSyncRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/gmail/attachment': {
+      id: '/api/gmail/attachment'
+      path: '/api/gmail/attachment'
+      fullPath: '/api/gmail/attachment'
+      preLoaderRoute: typeof ApiGmailAttachmentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/gmail/counts': {
       id: '/api/gmail/counts'
       path: '/api/gmail/counts'
@@ -592,6 +612,7 @@ const rootRouteChildren: RootRouteChildren = {
   ClassesIndexRoute: ClassesIndexRoute,
   ApiAuthPasscodeRoute: ApiAuthPasscodeRoute,
   ApiCronSyncRoute: ApiCronSyncRoute,
+  ApiGmailAttachmentRoute: ApiGmailAttachmentRoute,
   ApiGmailCountsRoute: ApiGmailCountsRoute,
   ApiGmailDraftRoute: ApiGmailDraftRoute,
   ApiGmailListRoute: ApiGmailListRoute,

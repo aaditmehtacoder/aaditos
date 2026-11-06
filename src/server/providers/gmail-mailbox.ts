@@ -14,6 +14,7 @@ import {
   allHeaders,
   api,
   buildMessage,
+  messageHtml,
   messageText,
   postMessage,
   senderName,
@@ -210,10 +211,12 @@ export interface ThreadMessage {
   cc: string;
   date: string;
   text: string;
+  /** The formatted version, sanitized; shown in a sandboxed frame. Empty for plain-text mail. */
+  html: string;
   snippet: string;
   unread: boolean;
   starred: boolean;
-  attachments: Array<{ filename: string; size: number }>;
+  attachments: AttachmentRef[];
 }
 
 export interface ThreadView {
@@ -224,10 +227,67 @@ export interface ThreadView {
   messages: ThreadMessage[];
 }
 
-function attachmentsOf(part: GmailPart | undefined): Array<{ filename: string; size: number }> {
+export interface AttachmentRef {
+  filename: string;
+  size: number;
+  mimeType: string;
+  /** Gmail's handle for the bytes; absent for small parts carried inline. */
+  attachmentId?: string | undefined;
+  /** Where the part sits in the message, for the inline ones. */
+  partId?: string | undefined;
+}
+
+function attachmentsOf(part: GmailPart | undefined): AttachmentRef[] {
   if (!part) return [];
-  const own = part.filename ? [{ filename: part.filename, size: part.body?.size ?? 0 }] : [];
+  const own: AttachmentRef[] = part.filename
+    ? [
+        {
+          filename: part.filename,
+          size: part.body?.size ?? 0,
+          mimeType: part.mimeType ?? "application/octet-stream",
+          attachmentId: part.body?.attachmentId,
+          partId: part.partId,
+        },
+      ]
+    : [];
   return [...own, ...(part.parts ?? []).flatMap((p) => attachmentsOf(p))];
+}
+
+/** The most an attachment can be and still pass through the host's response limit. */
+export const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024;
+
+/** One attachment's bytes, by Gmail's handle or, for an inline part, by its place in the message. */
+export async function fetchAttachment(
+  account: Account,
+  messageId: string,
+  ref: { attachmentId?: string | undefined; partId?: string | undefined },
+  fetchImpl: typeof fetch = fetch,
+): Promise<ArrayBuffer> {
+  const token = await accessTokenFromRefresh(account.refreshToken);
+  let data: string | undefined;
+  if (ref.attachmentId) {
+    const body = await api<{ data?: string; size?: number }>(
+      `/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(ref.attachmentId)}`,
+      token,
+      fetchImpl,
+    );
+    data = body.data;
+  } else if (ref.partId) {
+    const message = await api<FullMessage>(
+      `/messages/${encodeURIComponent(messageId)}?format=full`,
+      token,
+      fetchImpl,
+    );
+    const find = (p: GmailPart | undefined): GmailPart | undefined =>
+      !p ? undefined : p.partId === ref.partId ? p : (p.parts ?? []).map(find).find(Boolean);
+    data = find(message.payload)?.body?.data;
+  }
+  if (!data) throw new Error("That attachment is not there any more.");
+  const binary = atob(data.replace(/-/g, "+").replace(/_/g, "/"));
+  const buffer = new ArrayBuffer(binary.length);
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return buffer;
 }
 
 /**
@@ -261,6 +321,7 @@ export async function getThread(
           ? new Date(millis).toISOString()
           : new Date().toISOString(),
       text: messageText(m.payload).slice(0, 60_000),
+      html: messageHtml(m.payload),
       snippet: decodeEntities(m.snippet ?? "")
         .replace(/\s+/g, " ")
         .trim(),
