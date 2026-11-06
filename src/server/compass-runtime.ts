@@ -424,10 +424,25 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
             restartRound = true;
             break;
           }
+          // The answer is already on screen and this model ran out of its
+          // per-minute budget (web search results count too): keep what was
+          // written and offer Continue, instead of a provider error under it.
+          if (sawText && isBudgetFailure(message)) {
+            console.warn("[compass] stream stopped at the model's budget after text", {
+              model: rung.model,
+            });
+            yield {
+              type: "done",
+              usage: { inputTokens, outputTokens },
+              model: rung.model,
+              truncated: true,
+            };
+            return;
+          }
           yield {
             type: "error",
             code: String(err?.["code"] ?? "model_error"),
-            message,
+            message: isBudgetFailure(message) ? BUSY_MESSAGE : message,
             retryable: true,
           };
           return;
@@ -476,6 +491,15 @@ export async function* runCompassTurn(opts: RunOptions): AsyncGenerator<CompassE
           round -= 1;
           continue;
         }
+      }
+      if (sawText && isBudgetFailure(error instanceof Error ? error.message : String(error))) {
+        yield {
+          type: "done",
+          usage: { inputTokens, outputTokens },
+          model: rung.model,
+          truncated: true,
+        };
+        return;
       }
       yield toErrorEvent(error);
       return;
@@ -565,6 +589,15 @@ async function lookUpImages(args: unknown): Promise<unknown> {
   const limit = typeof a.limit === "number" ? a.limit : 4;
   return findImages(query, limit);
 }
+
+/** A model's per-minute or daily budget, as opposed to a broken request. */
+export function isBudgetFailure(message: string): boolean {
+  return /rate.?limit|too large for|tokens per min|\bTPM\b|requests per day|quota/i.test(message);
+}
+
+/** What the person sees instead of a provider's rate-limit text (which names the org). */
+export const BUSY_MESSAGE =
+  "The assistant hit its per-minute limit on that one. Press Retry in a moment, or ask a shorter question.";
 
 /**
  * Why there is no picture, in a sentence the owner can act on. The one

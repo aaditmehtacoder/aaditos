@@ -160,7 +160,13 @@ export function sendNew(
 
 export function draft(
   account: string,
-  opts: { id?: string; instruction?: string; current?: string; to?: string; subject?: string },
+  opts: {
+    id?: string | undefined;
+    instruction?: string | undefined;
+    current?: string | undefined;
+    to?: string | undefined;
+    subject?: string | undefined;
+  },
 ) {
   return mailFetch<{ text: string; subject?: string }>("api/gmail/draft", {
     method: "POST",
@@ -239,6 +245,8 @@ export function splitQuoted(text: string): { fresh: string; quoted: string } {
   const at = lines.findIndex(
     (line, i) =>
       /^On .{6,200}wrote:\s*$/.test(line.trim()) ||
+      // Hard-wrapped mail splits the header over two lines.
+      (/^On\s/.test(line.trim()) && /wrote:\s*$/.test(`${line} ${lines[i + 1] ?? ""}`.trim())) ||
       /^-{2,}\s*(Original|Forwarded) Message\s*-{2,}/i.test(line.trim()) ||
       (line.startsWith(">") && lines.slice(i).every((l) => l.startsWith(">") || !l.trim())),
   );

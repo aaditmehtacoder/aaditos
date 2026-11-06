@@ -287,3 +287,16 @@ describe("classify, for a request over a model's minute", () => {
     expect(classify(error)).toMatchObject({ retryable: true, reason: "rate limited (429)" });
   });
 });
+
+describe("budget failures", () => {
+  it("recognises a model's per-minute limit, and never shows its raw text", async () => {
+    const { isBudgetFailure, BUSY_MESSAGE } = await import("@/server/compass-runtime");
+    expect(
+      isBudgetFailure(
+        "Request too large for gpt-5.6-terra in organization org-X on tokens per min (TPM): Limit 10000, Requested 14002.",
+      ),
+    ).toBe(true);
+    expect(isBudgetFailure("The model could not complete this request.")).toBe(false);
+    expect(BUSY_MESSAGE).not.toMatch(/org-/);
+  });
+});

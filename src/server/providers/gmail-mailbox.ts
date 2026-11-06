@@ -85,8 +85,17 @@ async function pool<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>
   return out;
 }
 
+/** Characters some senders pad previews with. An alternation: a few are combining marks. */
+const INVISIBLE =
+  /\u00AD|\u034F|\u061C|\u115F|\u1160|\u17B4|\u17B5|\u180E|\u200B|\u200C|\u200D|\u200E|\u200F|\u2060|\u2061|\u2062|\u2063|\u2064|\uFEFF/g;
+
+/**
+ * Entities decoded, and the invisible padding some senders put in previews
+ * (combining grapheme joiners, zero-width spaces, soft hyphens) removed.
+ */
 const decodeEntities = (text: string) =>
   text
+    .replace(INVISIBLE, "")
     .replace(/&#39;|&apos;/g, "'")
     .replace(/&quot;/g, '"')
     .replace(/&amp;/g, "&")
@@ -252,7 +261,9 @@ export async function getThread(
           ? new Date(millis).toISOString()
           : new Date().toISOString(),
       text: messageText(m.payload).slice(0, 60_000),
-      snippet: decodeEntities(m.snippet ?? ""),
+      snippet: decodeEntities(m.snippet ?? "")
+        .replace(/\s+/g, " ")
+        .trim(),
       unread: (m.labelIds ?? []).includes("UNREAD"),
       starred: (m.labelIds ?? []).includes("STARRED"),
       attachments: attachmentsOf(m.payload),

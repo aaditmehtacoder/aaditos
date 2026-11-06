@@ -259,7 +259,17 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <OfflineBanner />
 
-      <main id="main" className="mx-auto w-full max-w-5xl flex-1 px-4 pb-24 pt-5 sm:pb-10 lg:px-6">
+      {/* Email is a full-width mail client with its own scrolling; everything
+          else reads best in a column. */}
+      <main
+        id="main"
+        className={cn(
+          "w-full flex-1",
+          pathname === "/email"
+            ? "px-2 pb-0 pt-2 sm:pb-2 lg:px-3"
+            : "mx-auto max-w-5xl px-4 pb-24 pt-5 sm:pb-10 lg:px-6",
+        )}
+      >
         {children}
       </main>
 
