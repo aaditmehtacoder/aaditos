@@ -225,6 +225,18 @@ export const serverEnv = {
   get notionTasksDatabaseId(): string | undefined {
     return read("NOTION_TASKS_DATABASE_ID");
   },
+  /**
+   * Optional: a Notion page of checkboxes whose open lines become planner
+   * tasks. Takes the page id or its full URL.
+   */
+  get notionTodoPageId(): string | undefined {
+    const raw = read("NOTION_TODO_PAGE_ID");
+    if (!raw) return undefined;
+    // A page URL ends in its id: …/To-do-List-3c3af2579ccf80a4…?pvs=4
+    const path = (raw.split(/[?#]/)[0] ?? "").replace(/[-/]/g, "");
+    const hex = path.match(/[0-9a-f]{32}$/i)?.[0];
+    return hex ? hex.toLowerCase() : undefined;
+  },
   get cronSecret(): string | undefined {
     return read("CRON_SECRET");
   },

@@ -113,6 +113,14 @@ interface OSState {
   importEvents: (calendarIds: string[], items: CalendarEvent[]) => Promise<void>;
   importCourses: (items: Course[]) => Promise<void>;
   importAssignments: (items: Assignment[]) => Promise<void>;
+  /**
+   * Apply an import plan (a Notion to-do page): insert the new tasks, patch
+   * the changed ones. New tasks whose ref already has a row are dropped.
+   */
+  importTasks: (plan: {
+    create: Task[];
+    update: Array<{ id: string; patch: Partial<Task> }>;
+  }) => Promise<void>;
 
   /**
    * Adds one event the user captured by hand or confirmed from an email.
@@ -578,6 +586,31 @@ export function OSProvider({ children }: { children: ReactNode }) {
     [mutate],
   );
 
+  // Refs the repository would not insert because a row already holds them —
+  // almost always a task deleted here. Kept for the session so every sync
+  // does not flash them back for a moment.
+  const refusedImports = useRef(new Set<string>());
+  const importTasks = useCallback<OSState["importTasks"]>(
+    async ({ create, update }) => {
+      const items = create.filter((t) => !t.sourceRef || !refusedImports.current.has(t.sourceRef));
+      if (items.length > 0) {
+        const result = await mutate({
+          label: "Import tasks",
+          optimistic: (ws) => ({ ...ws, tasks: mergeBySourceRef(ws.tasks, items) }),
+          persist: (repo, uid) => repo.insertImportedTasks(uid, items),
+        });
+        const refused = new Set(result?.skippedRefs ?? []);
+        if (refused.size > 0) {
+          for (const ref of refused) refusedImports.current.add(ref);
+          const ids = new Set(items.filter((t) => refused.has(t.sourceRef!)).map((t) => t.id));
+          setWorkspace((ws) => ({ ...ws, tasks: ws.tasks.filter((t) => !ids.has(t.id)) }));
+        }
+      }
+      for (const { id, patch } of update) await updateTask(id, patch);
+    },
+    [mutate, updateTask],
+  );
+
   const applyWorkspacePatch = useCallback<OSState["applyWorkspacePatch"]>((patch) => {
     setWorkspace((ws) => ({ ...ws, ...patch }));
   }, []);
@@ -695,6 +728,7 @@ export function OSProvider({ children }: { children: ReactNode }) {
       captureEvent,
       importCourses,
       importAssignments,
+      importTasks,
       applyWorkspacePatch,
       putAttachment,
       attachmentUrl,
@@ -730,6 +764,7 @@ export function OSProvider({ children }: { children: ReactNode }) {
       captureEvent,
       importCourses,
       importAssignments,
+      importTasks,
       applyWorkspacePatch,
       putAttachment,
       attachmentUrl,

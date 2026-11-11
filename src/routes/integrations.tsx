@@ -404,7 +404,7 @@ function buildCards(opts: {
       id: "notion",
       mark: "notion",
       name: "Notion",
-      what: "Pages edited this week, and open rows from a tasks database.",
+      what: "Open to-dos from your to-do page as tasks, and pages edited this week.",
       provider: "notion",
       state: stateFor(Boolean(config?.notion), rec("notion")),
       status: config?.notion ? synced("notion") : undefined,

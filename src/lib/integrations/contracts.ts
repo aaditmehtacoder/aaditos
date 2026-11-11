@@ -97,6 +97,40 @@ export interface InboxItem {
   unread?: boolean | undefined;
 }
 
+/**
+ * One open checkbox from the Notion to-do page. The client turns these into
+ * planner tasks; the server only reads and flattens the page.
+ */
+export interface NotionTodo {
+  /** The to-do block's id. Stable for as long as the line exists in Notion. */
+  id: string;
+  title: string;
+  /**
+   * Where it sits on the page, outermost first: headings, the short label
+   * above it ("Homework / Practice"), and any bullet or to-do it is nested in.
+   */
+  path: string[];
+  /** YYYY-MM-DD, from a date mention or a leading "2026-11-10 …" in the text. */
+  due?: string | undefined;
+  /** Link straight to the line in Notion. */
+  url: string;
+  /** Checkboxes nested under it, flattened. */
+  subtasks: Array<{ id: string; title: string; done: boolean }>;
+  editedAt: string;
+}
+
+export interface NotionTodoList {
+  /** Unchecked to-dos with a title, in page order, exact repeats removed. */
+  todos: NotionTodo[];
+  /** Block ids of to-dos that are ticked in Notion. */
+  doneIds: string[];
+  /**
+   * False when the walk stopped early (request budget, depth, an error deep
+   * in the tree). Only a complete walk may conclude a to-do was deleted.
+   */
+  complete: boolean;
+}
+
 export interface AeriesResult {
   configured: boolean;
   ok: boolean;
@@ -198,6 +232,8 @@ export interface SyncPayload {
   google?: GoogleResult;
   weather?: WeatherResult;
   aeries?: AeriesResult;
+  /** The Notion to-do page (`NOTION_TODO_PAGE_ID`), when one is set and readable. */
+  notionTodos?: NotionTodoList;
   /** Merged from every inbox-producing provider, newest first. */
   inbox?: InboxItem[];
   /** One line per connected mailbox: did it sync, and how much is unread. */

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { AttachmentStrip } from "@/components/os/attachment-strip";
 import { PriorityDot, SourceTag, isExternalSource } from "@/components/os/primitives";
 import { Checkbox } from "@/components/ui/checkbox";
+import { isNotionTodoTask } from "@/lib/core/notion-tasks";
 import { formatDuration, formatTime, relativeDayLabel } from "@/lib/core/time";
 import type { Task } from "@/lib/core/types";
 import { useOS } from "@/lib/store";
@@ -30,6 +31,9 @@ export function TaskRow({ task, index }: { task: Task; index?: number }) {
   const { toggleTask, deleteTask, workspace, now } = useOS();
   const done = task.status === "done";
   const course = workspace.courses.find((c) => c.id === task.courseId);
+  // Where a Notion to-do sits on its page ("Beacon Hacks", "PE · Homework"),
+  // which is what makes "Get venue" mean something. A course says it better.
+  const context = course?.name ?? (isNotionTodoTask(task) ? task.description : undefined);
 
   // Play the settle animation only on a real transition, never on mount.
   const [justChanged, setJustChanged] = useState(false);
@@ -94,12 +98,22 @@ export function TaskRow({ task, index }: { task: Task; index?: number }) {
             ·
           </span>
           <span>{formatDuration(task.estimateMin)}</span>
-          {course ? (
+          {task.subtasks.length > 0 ? (
             <>
               <span aria-hidden className="opacity-40">
                 ·
               </span>
-              <span className="truncate">{course.name}</span>
+              <span className="tabular-nums">
+                {task.subtasks.filter((s) => s.done).length}/{task.subtasks.length} steps
+              </span>
+            </>
+          ) : null}
+          {context ? (
+            <>
+              <span aria-hidden className="opacity-40">
+                ·
+              </span>
+              <span className="truncate">{context}</span>
             </>
           ) : null}
           {/* Only genuinely external origins earn a tag; manual and seeded rows do not. */}

@@ -207,13 +207,17 @@ export async function runSync(opts: SyncOptions): Promise<SyncPayload> {
         const result = await fetchNotion();
         if (!result.configured) return notConfigured(result.error ?? "Notion is not configured");
         inbox.push(...result.items);
+        if (result.todos) payload.notionTodos = result.todos;
+        const todos = result.todos
+          ? `${result.todos.todos.length} open to-do${result.todos.todos.length === 1 ? "" : "s"} · `
+          : "";
         return {
           ok: result.ok,
-          imported: result.items.length,
+          imported: result.items.length + (result.todos?.todos.length ?? 0),
           updated: 0,
           skipped: 0,
           message: result.ok
-            ? `${result.items.length} pages changed this week` +
+            ? `${todos}${result.items.length} pages changed this week` +
               (result.error ? ` · ${result.error}` : "")
             : (result.error ?? "Notion request failed"),
           needsCredentials: false,

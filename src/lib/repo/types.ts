@@ -64,6 +64,11 @@ export interface ImportResult {
   skipped: number;
 }
 
+export interface TaskImportResult extends ImportResult {
+  /** Refs not written because a row with that ref exists already — usually one deleted here. */
+  skippedRefs: string[];
+}
+
 export interface Repository {
   readonly kind: RepositoryKind;
 
@@ -79,6 +84,13 @@ export interface Repository {
 
   upsertCourses(userId: UUID, items: Course[]): Promise<ImportResult>;
   upsertAssignments(userId: UUID, items: Assignment[]): Promise<ImportResult>;
+  /**
+   * Insert imported tasks that have no row yet, matched on (source,
+   * sourceRef). Never touches an existing row — live or deleted — so a task
+   * someone deleted is not brought back; those refs are in `skippedRefs`.
+   * Changes to tasks that exist go through `updateTask`.
+   */
+  insertImportedTasks(userId: UUID, items: Task[]): Promise<TaskImportResult>;
   /** Replace every event belonging to `calendarIds` with `items` (idempotent import). */
   replaceEvents(userId: UUID, calendarIds: string[], items: CalendarEvent[]): Promise<ImportResult>;
 

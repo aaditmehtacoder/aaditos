@@ -123,10 +123,20 @@ is read-only: the app never writes to another service.
 | **Aeries**              | API certificate from the district | The official gradebook: classes, teachers, periods, scores.                                               |
 | **GitHub**              | `GITHUB_TOKEN`                    | Issues assigned to you, PRs waiting on you, your open PRs → Inbox.                                        |
 | **Slack**               | `SLACK_USER_TOKEN`                | Messages that mention you, and DMs, last 7 days → Inbox.                                                  |
-| **Notion**              | `NOTION_TOKEN`                    | Pages edited this week; open rows of `NOTION_TASKS_DATABASE_ID` → Inbox.                                  |
+| **Notion**              | `NOTION_TOKEN`                    | Open to-dos on `NOTION_TODO_PAGE_ID` → tasks; edited pages, `NOTION_TASKS_DATABASE_ID` → Inbox.           |
 | **Assistant**           | `OPENAI_API_KEY`                  | Capture and Ask. Without a key both say so plainly and generate nothing.                                  |
 
-**The Inbox.** Gmail, GitHub, Slack and Notion do not write tasks. They feed
+**The Notion to-do page.** The one exception to "the Inbox, not tasks": a
+checklist is already a list of tasks. With `NOTION_TODO_PAGE_ID` set, each sync
+reads the page's whole block tree and every open checkbox becomes a task — its
+heading or bullet ("Biology", "Beacon Hacks") as context or matched to a
+course, a typed `2026-11-10` or a date mention as its due date, nested
+checkboxes as its steps. Notion owns the wording and the date; the planner owns
+priority, estimate, schedule and finishing. Ticked in Notion → done here; gone
+from the page → archived (only after a complete read); deleted here → not
+recreated. Nothing is written back to Notion.
+
+**The Inbox.** Gmail, GitHub, Slack and Notion pages do not write tasks. They feed
 an Inbox panel on Today, each item with its source's mark. **File** sends the
 text through capture — which decides whether it is a task, an event or a note
 — and **Dismiss** makes it go away. The assistant can read the Inbox too
@@ -224,6 +234,7 @@ fully without them.
 | `SLACK_USER_TOKEN`          | server | `xoxp-…` user token with `search:read` and `users:read`.                                                                                      |
 | `NOTION_TOKEN`              | server | Internal integration secret; share pages with it in Notion.                                                                                   |
 | `NOTION_TASKS_DATABASE_ID`  | server | Optional: a tasks database whose open rows feed the Inbox.                                                                                    |
+| `NOTION_TODO_PAGE_ID`       | server | Optional: a page of checkboxes (id or URL). Open ones become tasks on Today, nested ones their steps; ticked in Notion → done here.           |
 | `AERIES_BASE_URL/CERT/…`    | server | District Aeries API certificate, school code and student id.                                                                                  |
 | `SAFETY_IDENTIFIER_SALT`    | server | Salt for the hashed `safety_identifier` sent to OpenAI.                                                                                       |
 | `VITE_SUPABASE_URL`         | client | Supabase project URL (public by design).                                                                                                      |

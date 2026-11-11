@@ -8,12 +8,13 @@
  */
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { withBase } from "@/lib/base-path";
 import { newId } from "@/lib/core/ids";
 import { mergeBySourceRef, normalizeEvent } from "@/lib/core/normalize";
+import { planNotionTodoImport } from "@/lib/core/notion-tasks";
 import type { CalendarEvent, IntegrationRecord, SyncRun } from "@/lib/core/types";
 import { PROVIDER_INTEGRATION_IDS } from "@/lib/integrations/contracts";
 import { authHeaders } from "@/lib/compass/client";
@@ -179,8 +180,15 @@ export function useSync() {
     importEvents,
     importCourses,
     importAssignments,
+    importTasks,
     setSyncing,
+    workspace,
+    status,
   } = useOS();
+  // The import is planned against the tasks as they are when the response
+  // lands, not as they were when the sync began.
+  const workspaceRef = useRef({ workspace, ready: status === "ready" });
+  workspaceRef.current = { workspace, ready: status === "ready" };
   const queryClient = useQueryClient();
   const lastPayload = useLastSyncPayload();
   const [state, setState] = useState<{ running: boolean; error: string | null }>({
@@ -232,6 +240,21 @@ export function useSync() {
           if (payload.aeries.assignments.length > 0) {
             await importAssignments(payload.aeries.assignments.map((a) => ({ ...a, userId })));
           }
+        }
+
+        // Only against a loaded workspace: planned against an empty one,
+        // every to-do would look new.
+        if (payload.notionTodos && workspaceRef.current.ready) {
+          const current = workspaceRef.current.workspace;
+          await importTasks(
+            planNotionTodoImport({
+              existing: current.tasks,
+              list: payload.notionTodos,
+              courses: current.courses,
+              userId,
+              now: new Date(),
+            }),
+          );
         }
 
         for (const run of payload.runs) {
@@ -292,6 +315,7 @@ export function useSync() {
       importEvents,
       importCourses,
       importAssignments,
+      importTasks,
       applyIntegration,
       recordSyncRun,
       setSyncing,

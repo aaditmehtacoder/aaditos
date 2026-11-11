@@ -26,7 +26,14 @@ import { storageKey } from "@/lib/storage-keys";
 
 import { clearBlobsWithPrefix, deleteBlob, getBlob, putBlob } from "./blobs";
 import { defaultPreferences, emptyWorkspace } from "./seed";
-import type { AttachmentInput, ImportResult, NoteInput, Repository, TaskInput } from "./types";
+import type {
+  AttachmentInput,
+  ImportResult,
+  NoteInput,
+  Repository,
+  TaskImportResult,
+  TaskInput,
+} from "./types";
 
 const SCHEMA_VERSION = 1;
 const KEY_PREFIX = storageKey("v1:workspace:");
@@ -233,6 +240,21 @@ export class LocalRepository implements Repository {
     ws.courses = result.list;
     this.write(userId);
     return result.stats;
+  }
+
+  async insertImportedTasks(userId: UUID, items: Task[]): Promise<TaskImportResult> {
+    // Deleting here removes the row outright, so there is no tombstone to
+    // honour: in local mode a deleted import comes back on the next sync.
+    const ws = this.read(userId);
+    const have = new Set(ws.tasks.map((t) => t.sourceRef).filter(Boolean));
+    const added = items.filter((t) => !t.sourceRef || !have.has(t.sourceRef));
+    const skippedRefs = items
+      .filter((t) => !added.includes(t))
+      .map((t) => t.sourceRef)
+      .filter((r): r is string => Boolean(r));
+    ws.tasks = [...added.map((t) => ({ ...t, userId })), ...ws.tasks];
+    this.write(userId);
+    return { imported: added.length, updated: 0, skipped: skippedRefs.length, skippedRefs };
   }
 
   async upsertAssignments(userId: UUID, items: Assignment[]): Promise<ImportResult> {

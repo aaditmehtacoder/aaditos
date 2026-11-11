@@ -30,7 +30,14 @@ import type {
 } from "@/lib/core/types";
 
 import { defaultPreferences, seedCourses } from "./seed";
-import type { AttachmentInput, ImportResult, NoteInput, Repository, TaskInput } from "./types";
+import type {
+  AttachmentInput,
+  ImportResult,
+  NoteInput,
+  Repository,
+  TaskImportResult,
+  TaskInput,
+} from "./types";
 
 /** Private bucket; `supabase/migrations/0005_attachments.sql` creates it with owner-only policies. */
 const BUCKET = "attachments";
@@ -251,6 +258,50 @@ export class SupabaseRepository implements Repository {
     );
     if (error) throw new Error(`upsert courses: ${error.message}`);
     return { imported: items.length, updated: 0, skipped: 0 };
+  }
+
+  async insertImportedTasks(userId: UUID, items: Task[]): Promise<TaskImportResult> {
+    if (items.length === 0) return { imported: 0, updated: 0, skipped: 0, skippedRefs: [] };
+    const db = this.db();
+    // ON CONFLICT DO NOTHING on (user, source, ref): a soft-deleted row still
+    // holds its ref, so a deleted import stays deleted, and a row this copy
+    // of the workspace has not seen yet is left exactly as it is.
+    const { data, error } = await db
+      .from("tasks")
+      .upsert(
+        items.map((t) => ({
+          id: t.id,
+          user_id: userId,
+          title: t.title,
+          description: t.description ?? null,
+          category: t.category,
+          course_id: t.courseId ?? null,
+          due_at: t.dueAt ?? null,
+          due_all_day: t.dueAllDay,
+          priority: t.priority,
+          status: t.status,
+          estimate_min: t.estimateMin,
+          source: t.source,
+          source_ref: t.sourceRef ?? null,
+          external_url: t.externalUrl ?? null,
+          subtasks: t.subtasks,
+          position: t.position,
+        })),
+        { onConflict: "user_id,source,source_ref", ignoreDuplicates: true },
+      )
+      .select("source_ref");
+    const written = new Set(
+      (check(data, error, "import tasks") as Row[]).map((row) => opt(row, "source_ref")),
+    );
+    const skippedRefs = items
+      .map((t) => t.sourceRef)
+      .filter((r): r is string => Boolean(r) && !written.has(r));
+    return {
+      imported: items.length - skippedRefs.length,
+      updated: 0,
+      skipped: skippedRefs.length,
+      skippedRefs,
+    };
   }
 
   async upsertAssignments(userId: UUID, items: Assignment[]): Promise<ImportResult> {
