@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { gmailId, json, mailAccess } from "@/server/mail-access";
+import { gmailId, json, mailAccess, mailFailure } from "@/server/mail-access";
 import { GMAIL_MODIFY_SCOPE, getThread } from "@/server/providers/gmail-mailbox";
 
 /**
@@ -25,13 +25,7 @@ export const Route = createFileRoute("/api/gmail/thread")({
           });
           return json({ ok: true, thread });
         } catch (error) {
-          return json(
-            {
-              ok: false,
-              message: error instanceof Error ? error.message : "Gmail did not answer.",
-            },
-            502,
-          );
+          return mailFailure(error, "Gmail did not answer.");
         }
       },
     },

@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { withFallback } from "@/server/ai";
 import { serverEnv } from "@/server/env";
-import { gmailId, json, mailAccess } from "@/server/mail-access";
+import { gmailId, json, mailAccess, mailFailure } from "@/server/mail-access";
 import { fetchGmailMessage, senderName } from "@/server/providers/gmail";
 
 /**
@@ -90,7 +90,7 @@ export const Route = createFileRoute("/api/gmail/draft")({
             suggested = subjectLine[1].trim();
             text = text.slice(subjectLine[0].length).trim();
           }
-          if (!text) return json({ ok: false, message: "No draft came back. Try again." }, 502);
+          if (!text) return json({ ok: false, message: "No draft came back. Try again." }, 503);
           return json({
             ok: true,
             text,
@@ -98,10 +98,7 @@ export const Route = createFileRoute("/api/gmail/draft")({
             to: original ? senderName(original.from) : undefined,
           });
         } catch (error) {
-          return json(
-            { ok: false, message: error instanceof Error ? error.message : "Could not draft it." },
-            502,
-          );
+          return mailFailure(error, "Could not draft it.");
         }
       },
     },

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { json, mailAccess } from "@/server/mail-access";
+import { json, mailAccess, mailFailure } from "@/server/mail-access";
 import { isCategory, isFolder, listMail } from "@/server/providers/gmail-mailbox";
 
 /** One page of one folder (or a search) in one account. Read-only. */
@@ -29,13 +29,7 @@ export const Route = createFileRoute("/api/gmail/list")({
           });
           return json({ ok: true, ...page });
         } catch (error) {
-          return json(
-            {
-              ok: false,
-              message: error instanceof Error ? error.message : "Gmail did not answer.",
-            },
-            502,
-          );
+          return mailFailure(error, "Gmail did not answer.");
         }
       },
     },

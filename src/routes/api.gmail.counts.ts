@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { json, mailAccess } from "@/server/mail-access";
+import { json, mailAccess, mailFailure } from "@/server/mail-access";
 import { mailCounts } from "@/server/providers/gmail-mailbox";
 
 /** Unread in Inbox and Spam, and how many drafts, for the folder list. */
@@ -16,13 +16,7 @@ export const Route = createFileRoute("/api/gmail/counts")({
         try {
           return json({ ok: true, counts: await mailCounts(access.account) });
         } catch (error) {
-          return json(
-            {
-              ok: false,
-              message: error instanceof Error ? error.message : "Gmail did not answer.",
-            },
-            502,
-          );
+          return mailFailure(error, "Gmail did not answer.");
         }
       },
     },

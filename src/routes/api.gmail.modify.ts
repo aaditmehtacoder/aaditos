@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { gmailId, json, mailAccess } from "@/server/mail-access";
+import { gmailId, json, mailAccess, mailFailure } from "@/server/mail-access";
 import { GMAIL_MODIFY_SCOPE, isAction, modifyThreads } from "@/server/providers/gmail-mailbox";
 
 /**
@@ -45,13 +45,7 @@ export const Route = createFileRoute("/api/gmail/modify")({
           await modifyThreads(access.account, ids, body.action);
           return json({ ok: true, count: ids.length });
         } catch (error) {
-          return json(
-            {
-              ok: false,
-              message: error instanceof Error ? error.message : "Gmail did not change it.",
-            },
-            502,
-          );
+          return mailFailure(error, "Gmail did not change it.");
         }
       },
     },

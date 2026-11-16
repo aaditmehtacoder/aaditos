@@ -10,6 +10,7 @@
 import { bearerToken, verifySupabaseToken } from "./auth";
 import { accountsForUser } from "./google-accounts";
 import type { GoogleAccount } from "./google-session";
+import { GoogleReconnectError } from "./providers/google";
 import { checkRateLimit, callerKey } from "./rate-limit";
 
 export type MailAccess =
@@ -60,6 +61,24 @@ export async function mailAccess(
     };
   }
   return { ok: true, userId, account };
+}
+
+/**
+ * A Gmail call that failed, as an answer the page can act on.
+ *
+ * Never 502 or 504: the site is served through Cloudflare, which replaces
+ * those with its own HTML page, so the sentence never reached the person and
+ * an expired inbox showed only "Request failed (502)". An expired or revoked
+ * connection says so with `code: "reconnect"`, so the page can offer it.
+ */
+export function mailFailure(error: unknown, fallback: string): Response {
+  if (error instanceof GoogleReconnectError) {
+    return json(
+      { ok: false, code: "reconnect", message: "Google sign-in expired. Reconnect this inbox." },
+      401,
+    );
+  }
+  return json({ ok: false, message: error instanceof Error ? error.message : fallback }, 503);
 }
 
 /** Gmail message ids are short hex strings; the app's own ids carry a "gmail:" prefix. */

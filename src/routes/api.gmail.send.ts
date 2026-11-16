@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { json, mailAccess } from "@/server/mail-access";
+import { json, mailAccess, mailFailure } from "@/server/mail-access";
 import { parseRecipients, sendNewMail } from "@/server/providers/gmail-mailbox";
 
 /**
@@ -58,13 +58,7 @@ export const Route = createFileRoute("/api/gmail/send")({
           console.error("[gmail] send failed", {
             message: error instanceof Error ? error.message.slice(0, 160) : "unknown",
           });
-          return json(
-            {
-              ok: false,
-              message: error instanceof Error ? error.message : "Gmail did not send it.",
-            },
-            502,
-          );
+          return mailFailure(error, "Gmail did not send it.");
         }
       },
     },

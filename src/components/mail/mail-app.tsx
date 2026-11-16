@@ -61,6 +61,7 @@ import {
   groupThreads,
   listDate,
   listPage,
+  MailError,
   modify,
   type Category,
   type FolderId,
@@ -103,7 +104,8 @@ const CATEGORIES: Array<{ id: Category; label: string; icon: LucideIcon }> = [
 interface Page {
   items: MailSummary[];
   tokens: Record<string, string | null>;
-  errors: Record<string, string>;
+  /** Per account: why it did not load, and whether only reconnecting will help. */
+  errors: Record<string, { message: string; reconnect: boolean }>;
 }
 
 type Target = { account: string; threadId: string };
@@ -176,7 +178,13 @@ export function MailApp({ search }: { search: MailSearch }) {
             });
             return { email, page };
           } catch (error) {
-            return { email, error: error instanceof Error ? error.message : "Could not load." };
+            return {
+              email,
+              error: {
+                message: error instanceof Error ? error.message : "Could not load.",
+                reconnect: error instanceof MailError && error.code === "reconnect",
+              },
+            };
           }
         }),
       );
@@ -202,6 +210,8 @@ export function MailApp({ search }: { search: MailSearch }) {
     [list.data],
   );
   const errors = Object.entries(list.data?.pages[0]?.errors ?? {});
+  const expired = errors.filter(([, e]) => e.reconnect);
+  const failed = errors.filter(([, e]) => !e.reconnect);
 
   // ---- counts -------------------------------------------------------------
 
@@ -431,7 +441,10 @@ export function MailApp({ search }: { search: MailSearch }) {
   // ---- render ---------------------------------------------------------------
 
   const [menuOpen, setMenuOpen] = useState(false);
-  const missing = accounts.filter((a) => !a.canModify || !a.canReply);
+  // An expired inbox is offered once, in the reconnect banner; reconnecting grants these too.
+  const missing = accounts.filter(
+    (a) => (!a.canModify || !a.canReply) && !expired.some(([email]) => email === a.email),
+  );
   const loadingStatus = google.isLoading;
 
   const sidebar = (
@@ -817,12 +830,30 @@ export function MailApp({ search }: { search: MailSearch }) {
                 </div>
               ) : null}
 
-              {errors.length > 0 ? (
+              {expired.length > 0 ? (
+                <div
+                  role="alert"
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/70 bg-warning-soft px-4 py-2 text-[12.5px] text-warning-strong"
+                >
+                  <span>Google sign-in expired. Reconnect</span>
+                  {expired.map(([email]) => (
+                    <a
+                      key={email}
+                      href={reconnect(email)}
+                      className="font-medium underline underline-offset-2 hover:no-underline"
+                    >
+                      {email}
+                    </a>
+                  ))}
+                </div>
+              ) : null}
+
+              {failed.length > 0 ? (
                 <p
                   role="alert"
                   className="border-b border-border/70 bg-warning-soft px-4 py-2 text-[12.5px] text-warning-strong"
                 >
-                  {errors.map(([email, message]) => `${email}: ${message}`).join(" · ")}
+                  {failed.map(([email, e]) => `${email}: ${e.message}`).join(" · ")}
                 </p>
               ) : null}
 

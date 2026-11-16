@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { gmailId, json, mailAccess } from "@/server/mail-access";
+import { gmailId, json, mailAccess, mailFailure } from "@/server/mail-access";
 import { MAX_ATTACHMENT_BYTES, fetchAttachment } from "@/server/providers/gmail-mailbox";
 
 /**
@@ -52,13 +52,7 @@ export const Route = createFileRoute("/api/gmail/attachment")({
             },
           });
         } catch (error) {
-          return json(
-            {
-              ok: false,
-              message: error instanceof Error ? error.message : "Gmail did not answer.",
-            },
-            502,
-          );
+          return mailFailure(error, "Gmail did not answer.");
         }
       },
     },

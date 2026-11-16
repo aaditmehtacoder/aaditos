@@ -156,6 +156,15 @@ function emailFromIdToken(idToken?: string): string | undefined {
   }
 }
 
+/**
+ * Google no longer honours a saved connection: it was revoked, or it expired.
+ * While the OAuth app is in Testing mode Google expires these after 7 days.
+ * Only connecting the account again helps, so callers can offer exactly that.
+ */
+export class GoogleReconnectError extends Error {
+  readonly code = "reconnect";
+}
+
 export async function accessTokenFromRefresh(refreshToken: string): Promise<string> {
   const response = await fetch(TOKEN_ENDPOINT, {
     method: "POST",
@@ -177,11 +186,12 @@ export async function accessTokenFromRefresh(refreshToken: string): Promise<stri
 
   if (!response.ok || !data.access_token) {
     // `invalid_grant` means the user revoked access or the token expired.
-    throw new Error(
-      data.error === "invalid_grant"
-        ? "Google access was revoked or expired. Reconnect Google in Integrations."
-        : (data.error_description ?? "Could not refresh the Google access token."),
-    );
+    if (data.error === "invalid_grant") {
+      throw new GoogleReconnectError(
+        "Google access was revoked or expired. Reconnect Google in Integrations.",
+      );
+    }
+    throw new Error(data.error_description ?? "Could not refresh the Google access token.");
   }
   return data.access_token;
 }
